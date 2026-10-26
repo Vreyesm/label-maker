@@ -61,6 +61,11 @@ assert(printHTML.includes('@page{size:100mm 60mm;margin:0}'));
 assert(printHTML.includes('width:100mm!important;height:60mm!important'));
 assert(!/resize-handle|class="element|selected|id="board|canvas-area|top-ruler|<script/.test(printHTML));
 assert(printHTML.includes('text-anchor="middle"'));
+// Orientation rotates the complete design reversibly, with exact physical dimensions.
+assert(run(`(()=>{const doc={w:100,h:60,elements:[el('text',5,10,90,8,'Bodega',{rotation:25})]},before=JSON.stringify(doc);orientLabel(doc,'portrait');return doc.w===60&&doc.h===100&&doc.elements[0].rotation===115&&doc.elements[0].text==='Bodega'&&orientLabel(doc,'portrait')===false&&(orientLabel(doc,'landscape'),JSON.stringify(doc)===before)})()`));
+assert(run(`(()=>{const e=el('text',5,10,40,10,'Hola'),doc={w:100,h:60,elements:[e]},before=JSON.stringify(e);orientLabel(doc,'portrait',false);return doc.w===60&&doc.h===100&&JSON.stringify(e)===before})()`));
+assert(run(`(()=>{const doc={w:60,h:60,elements:[]};return orientLabel(doc,'portrait')===false&&doc.w===60&&doc.h===60})()`));
+assert(run(`(()=>{const doc={w:100,h:60,bg:'#ffffff',elements:[el('text',5,10,90,8,'Bodega')]};orientLabel(doc,'portrait');const job=buildPrintJob(doc,[{}],1,'label');return job.css.includes('@page{size:60mm 100mm')&&job.html.includes('width="60mm" height="100mm"')&&job.html.includes('rotate(90')})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;

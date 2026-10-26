@@ -91,3 +91,7 @@ El botón Imprimir y Ctrl/⌘+P abren la configuración de papel. La impresión 
 - **A4 o carta**: etiquetas a tamaño real en una cuadrícula, con 10 mm de margen y 3 mm entre etiquetas. La orientación cambia si es necesario para que la etiqueta quepa; no se reduce la escala. No es una plantilla para hojas adhesivas precortadas.
 - En el diálogo del sistema, seleccionar el papel correspondiente, escala 100%, márgenes ninguno y desactivar encabezados y pies. La aplicación no puede modificar estos ajustes del controlador. Para PDF, elegir Guardar como PDF.
 - La vista previa de la aplicación es de la etiqueta; la vista del sistema muestra su distribución en la hoja.
+
+## Orientación de la etiqueta
+
+En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** intercambian ancho y alto. Por defecto **Girar también el diseño** rota todo el contenido 90° al pasar a vertical y lo gira de vuelta al volver a horizontal, manteniendo tamaños y posiciones relativas. Desmarca esa opción para cambiar solo el formato del lienzo y redistribuir el contenido manualmente. En etiquetas cuadradas los botones están desactivados. El cambio se puede deshacer y se conserva al guardar; SVG e impresión usan las nuevas dimensiones.
