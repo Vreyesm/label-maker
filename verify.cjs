@@ -1,0 +1,17 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const code=fs.readFileSync(__dirname+'/dist/app.js','utf8').split("$('#board').onpointerdown=")[0];
+const context=vm.createContext({console,localStorage:{getItem:()=>null},document:{querySelector:()=>null}});vm.runInContext(code,context);
+const run=s=>vm.runInContext(s,context);
+assert(run(`barcode({color:'#000000'},'7501234567893').svg.includes('7501234567893')`));
+assert(run(`!!barcode({},'7501234567890').error`));
+assert(run(`barcode({color:'#000000'},'750123456789').svg.includes('7501234567893')`));
+assert(run(`!!barcode({},'ABC').error`));
+assert(run(`!!barcode({format:'code39',color:'#000000'},'SKU-123').svg`));
+assert.deepEqual(JSON.parse(run(String.raw`JSON.stringify(parseCSV('producto,precio\r\n"Jabón, oliva",149\r\n"Vela ""natural""",249'))`)),[['producto','precio'],['Jabón, oliva','149'],['Vela "natural"','249']]);
+assert.equal(run(`val('{{producto}} #{{numero}}',{producto:'Jabón'},2)`),'Jabón #0003');
+assert(run(`svgDoc().includes('width="100mm"')`));
+assert(run(`svgDoc({...state,elements:[el('text',1,1,20,5,'<script>')]}).includes('&lt;script&gt;')`));
+assert.throws(()=>run(`validate({...state,w:0})`));
+assert.throws(()=>run(`validate({...state,elements:[el('image',1,1,10,10,'',{src:'https://example.com/track'})]})`));
+for(const t of ['product','shipping','price','stock'])assert(run(`svgDoc({w:templates.find(t=>t.id==='${t}').w,h:templates.find(t=>t.id==='${t}').h,bg:'#ffffff',elements:templates.find(t=>t.id==='${t}').elements()}).includes('<svg')`));
+console.log('15 comprobaciones correctas: EAN-13, Code 39, CSV, variables, SVG, plantillas e importación.');
