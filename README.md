@@ -82,3 +82,12 @@ Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, 
 - **Centrar en etiqueta** centra el cuadro completo horizontal y verticalmente.
 
 Los controles principales de texto están en una barra sobre el lienzo: A−, tamaño en puntos (pt), A+, negrita e iconos de alineación con el botón central claramente marcado. Al aumentar la fuente, el cuadro crece en altura para mostrar las nuevas líneas.
+
+## Impresión y papel
+
+El botón Imprimir y Ctrl/⌘+P abren la configuración de papel. La impresión usa un documento independiente que contiene únicamente los SVG de las etiquetas: sin cuadrícula, reglas, selección, tiradores ni controles del editor. El menú de impresión del navegador también prepara la misma salida mediante `beforeprint`.
+
+- **Etiqueta / rollo**: una etiqueta por página, con las dimensiones exactas del diseño.
+- **A4 o carta**: etiquetas a tamaño real en una cuadrícula, con 10 mm de margen y 3 mm entre etiquetas. La orientación cambia si es necesario para que la etiqueta quepa; no se reduce la escala. No es una plantilla para hojas adhesivas precortadas.
+- En el diálogo del sistema, seleccionar el papel correspondiente, escala 100%, márgenes ninguno y desactivar encabezados y pies. La aplicación no puede modificar estos ajustes del controlador. Para PDF, elegir Guardar como PDF.
+- La vista previa de la aplicación es de la etiqueta; la vista del sistema muestra su distribución en la hoja.

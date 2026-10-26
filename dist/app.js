@@ -21,6 +21,59 @@ function barcode(e,text){let bits='',human=text;const L=['0001101','0011001','00
 if((e.format||'ean13')==='ean13'){if(!/^\d{12,13}$/.test(text))return {error:'EAN-13: usa 12 o 13 dígitos'};let raw=text.slice(0,12),check=(10-[...raw].reduce((s,n,i)=>s+Number(n)*(i%2?3:1),0)%10)%10;human=raw+check;if(text.length===13&&text!==human)return {error:'Dígito de control incorrecto'};bits='101';for(let i=1;i<7;i++)bits+=(P[+human[0]][i-1]==='L'?L:G)[+human[i]];bits+='01010';for(let i=7;i<13;i++)bits+=L[+human[i]].split('').map(x=>x==='0'?'1':'0').join('');bits+='101';
 }else{const chars='0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ-. $/+%*',patterns=[0x034,0x121,0x061,0x160,0x031,0x130,0x070,0x025,0x124,0x064,0x109,0x049,0x148,0x019,0x118,0x058,0x00d,0x10c,0x04c,0x01c,0x103,0x043,0x142,0x013,0x112,0x052,0x007,0x106,0x046,0x016,0x181,0x0c1,0x1c0,0x091,0x190,0x0d0,0x085,0x184,0x0c4,0x0a8,0x0a2,0x08a,0x02a,0x094];human=text.toUpperCase();if(!/^[0-9A-Z .\-$/+%]+$/.test(human))return {error:'Code 39: caracteres no admitidos'};for(const c of '*'+human+'*'){let pattern=patterns[chars.indexOf(c)];for(let i=0;i<9;i++)bits+=(i%2?'0':'1').repeat(pattern&(1<<(8-i))?3:1);bits+='0'}}
 let rects='';for(let i=0;i<bits.length;i++)if(bits[i]==='1')rects+=`<rect x="${i+12}" y="0" width="1" height="35"/>`;return {svg:`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${bits.length+24} 45" preserveAspectRatio="none"><rect width="100%" height="100%" fill="white"/><g fill="${esc(e.color)}">${rects}</g><text x="50%" y="43" text-anchor="middle" font-size="8" font-family="Arial" fill="${esc(e.color)}">${esc(human)}</text></svg>`}}
+let lastPrintPaper='label';
+try{lastPrintPaper=localStorage.getItem('labela-print-paper')||'label'}catch{}
+function paperLayout(doc,paper='label'){
+ const sheets={a4:[210,297],letter:[215.9,279.4]};
+ if(paper==='label')return {w:doc.w,h:doc.h,margin:0,gap:0,cols:1,rows:1,capacity:1,paper};
+ if(!sheets[paper])throw Error('Formato de papel no válido.');
+ let [w,h]=sheets[paper];const margin=10,gap=3;
+ if((doc.w>w-2*margin||doc.h>h-2*margin)&&doc.w<=h-2*margin&&doc.h<=w-2*margin)[w,h]=[h,w];
+ const cols=Math.floor((w-2*margin+gap)/(doc.w+gap)),rows=Math.floor((h-2*margin+gap)/(doc.h+gap));
+ if(cols<1||rows<1)throw Error('La etiqueta no cabe en esta hoja con 10 mm de margen. Elige otro papel o reduce la etiqueta.');
+ return {w,h,margin,gap,cols,rows,capacity:cols*rows,paper};
+}
+function buildPrintJob(doc,data,count,paper='label'){
+ if(!Number.isInteger(count)||count<1||count>500||!data.length||count*data.length>500)throw Error('Elige de 1 a 500 etiquetas por impresión.');
+ const layout=paperLayout(doc,paper),labels=[];
+ data.forEach((row,index)=>{
+  for(const e of doc.elements){
+   const value=val(e.text,row,index);
+   if(/\{\{[^}]+\}\}/.test(value))throw Error('Hay campos sin datos. Importa un CSV o edita el contenido.');
+   if(e.type==='barcode'){const b=barcode(e,value);if(b.error)throw Error(`Registro ${index+1}: ${b.error}`)}
+  }
+  const label=`<div class="print-label">${svgDoc(doc,row,index)}</div>`;
+  for(let copy=0;copy<count;copy++)labels.push(label);
+ });
+ const pages=[];for(let i=0;i<labels.length;i+=layout.capacity)pages.push(`<section class="print-sheet">${labels.slice(i,i+layout.capacity).join('')}</section>`);
+ const css=`@page{size:${layout.w}mm ${layout.h}mm;margin:0}html,body{margin:0!important;padding:0!important;background:white!important;width:auto!important;min-width:0!important;height:auto!important;min-height:0!important}*{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}.print-sheet{display:grid!important;position:relative!important;width:${layout.w}mm!important;height:${layout.h}mm!important;margin:0!important;padding:${layout.margin}mm!important;grid-template-columns:repeat(${layout.cols},${doc.w}mm);grid-auto-rows:${doc.h}mm;gap:${layout.gap}mm;align-content:start;justify-content:start;overflow:hidden;break-after:page;page-break-after:always}.print-sheet:last-child{break-after:auto;page-break-after:auto}.print-label{display:block!important;position:relative!important;width:${doc.w}mm!important;height:${doc.h}mm!important;margin:0!important;padding:0!important;border:0!important;outline:0!important;box-shadow:none!important;overflow:hidden!important;break-inside:avoid;page-break-inside:avoid;break-after:auto;page-break-after:auto}.print-label>svg{display:block!important;width:${doc.w}mm!important;height:${doc.h}mm!important;margin:0!important;padding:0!important}`;
+ return {layout,html:pages.join(''),css,pages:pages.length,total:labels.length};
+}
+function printDocument(job,name='Etiquetas'){
+ return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>${esc(name)}</title><style>${job.css}</style></head><body>${job.html}</body></html>`;
+}
+function currentPrintJob(){finishInlineEdit(true,false);return buildPrintJob(state,rows.length?rows:[{}],+$('#copies').value,lastPrintPaper)}
+function updatePrintPreview(){
+ const button=$('#confirm-print');
+ try{lastPrintPaper=$('#print-paper').value;const job=currentPrintJob();$('#print-summary').textContent=`${job.total} etiquetas de ${state.w} × ${state.h} mm · ${job.pages} ${lastPrintPaper==='label'?'etiquetas individuales':'hojas '+(lastPrintPaper==='a4'?'A4':'carta')}`;$('#print-preview').innerHTML=svgDoc();$('#print-error').textContent='';button.disabled=false;try{localStorage.setItem('labela-print-paper',lastPrintPaper)}catch{}return job}
+ catch(error){$('#print-error').textContent=error.message;button.disabled=true;return null}
+}
+function prepareNativePrint(){
+ let style=$('#page-style');if(!style){style=document.createElement('style');style.id='page-style';style.media='print';document.head.append(style)}
+ try{const job=currentPrintJob();$('#print-area').innerHTML=job.html;style.textContent=job.css}
+ catch(error){$('#print-area').innerHTML=`<p style="font:16px Arial;padding:20px">${esc(error.message)} Cancela esta impresión y revisa la configuración.</p>`;style.textContent='@page{size:auto;margin:10mm}'}
+}
+function launchPrint(job){
+ const old=$('#label-print-frame');if(old)old.remove();
+ const frame=document.createElement('iframe');frame.id='label-print-frame';frame.title='Documento de etiquetas para imprimir';frame.setAttribute('aria-hidden','true');frame.style.cssText='position:fixed;left:-10000px;top:0;width:1px;height:1px;border:0';
+ const button=$('#confirm-print');button.disabled=true;button.textContent='Preparando…';
+ frame.onload=async()=>{
+  try{await frame.contentDocument.fonts.ready;frame.contentWindow.onafterprint=()=>frame.remove();$('#printdialog').close();frame.contentWindow.focus();frame.contentWindow.print()}
+  catch(error){toast('No se pudo abrir la impresión. Intenta de nuevo.');frame.remove()}
+  finally{button.disabled=false;button.textContent='Abrir impresión'}
+ };
+ frame.srcdoc=printDocument(job,state.name);document.body.append(frame);
+}
 function measureText(text,e){
  const ctx=measureText.ctx||(measureText.ctx=document.createElement?.('canvas').getContext('2d'));
  if(!ctx)return text.length*e.size*.55;
@@ -145,5 +198,9 @@ $('#board').onpointerdown=event=>{
 };
 $('#fitwidth').onclick=()=>{finishInlineEdit();fitWidth=!fitWidth;zoom=1;render()};
 $('#docname').onchange=e=>change(()=>state.name=e.target.value||'Sin título');$('#size').onchange=e=>{if(e.target.value==='custom')return;const [w,h]=e.target.value.split(',').map(Number);change(()=>{state.w=w;state.h=h})};for(const id of ['width','height'])$('#'+id).onchange=e=>{const v=+e.target.value;if(v<10||v>300){toast('El tamaño debe estar entre 10 y 300 mm.');render();return}change(()=>state[id==='width'?'w':'h']=v)};$('#background').onchange=e=>change(()=>state.bg=e.target.value);$('#grid').onchange=e=>$('#canvas-area').classList.toggle('no-grid',!e.target.checked);$('#zoomin').onclick=()=>{fitWidth=false;zoom=Math.min(2,zoom+.1);render()};$('#zoomout').onclick=()=>{fitWidth=false;zoom=Math.max(.3,zoom-.1);render()};$('#undo').onclick=()=>{if(!history.length)return;future.push(clone(state));state=history.pop();selected=null;render();renderLeft();persist()};$('#redo').onclick=()=>{if(!future.length)return;history.push(clone(state));state=future.pop();selected=null;render();renderLeft();persist()};$('#duplicate').onclick=()=>{const e=state.elements.find(x=>x.id===selected);if(e)change(()=>{const n={...clone(e),id:++seq,x:e.x+2,y:e.y+2};state.elements.push(n);selected=n.id});else toast('Selecciona un elemento para duplicarlo')};$('#delete').onclick=()=>{if(selected)change(()=>{state.elements=state.elements.filter(e=>e.id!==selected);selected=null})};document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderLeft()});$('#data-shortcut').onclick=()=>{tab='data';renderLeft()};$('#save').onclick=()=>download(state.name+'.labela.json',JSON.stringify(state,null,2),'application/json');$('#open').onclick=()=>pickFile('.json',async f=>{try{if(f.size>12e6)throw Error('El archivo supera 12 MB.');const d=validate(JSON.parse(await f.text()));change(()=>{state=d;seq=Math.max(seq,...d.elements.map(e=>e.id));selected=null});renderLeft();toast('Diseño abierto')}catch(e){toast(e.message)}});$('#exportsvg').onclick=()=>download(state.name+'.svg',svgDoc(),'image/svg+xml');
-$('#print').onclick=()=>{let count=Number($('#copies').value);if(!Number.isInteger(count)||count<1||count>500)return toast('Elige entre 1 y 500 copias.');const data=rows.length?rows:[{}];if(count*data.length>500)return toast('Máximo 500 etiquetas por impresión.');for(let i=0;i<data.length;i++)for(const e of state.elements){const text=val(e.text,data[i],i);if(/\{\{[^}]+\}\}/.test(text))return toast('Hay campos sin datos. Importa un CSV o edita el contenido.');if(e.type==='barcode'){const b=barcode(e,text);if(b.error)return toast(`Registro ${i+1}: ${b.error}`)}}$('#print-summary').textContent=`${count*data.length} etiquetas · ${state.w} × ${state.h} mm`;$('#printdialog').showModal()};$('#confirm-print').onclick=()=>{const data=rows.length?rows:[{}],count=+$('#copies').value;$('#print-area').innerHTML=data.map((r,i)=>Array.from({length:count},()=>`<div class="print-label" style="width:${state.w}mm;height:${state.h}mm">${svgDoc(state,r,i)}</div>`).join('')).join('');let style=$('#page-style');if(!style){style=document.createElement('style');style.id='page-style';document.head.append(style)}style.textContent=`@page{size:${state.w}mm ${state.h}mm;margin:0}`;$('#printdialog').close();window.print()};
+$('#print').onclick=()=>{finishInlineEdit();$('#print-paper').value=lastPrintPaper;updatePrintPreview();$('#printdialog').showModal()};
+$('#print-paper').onchange=updatePrintPreview;
+$('#confirm-print').onclick=()=>{const job=updatePrintPreview();if(job)launchPrint(job)};
+window.addEventListener('beforeprint',prepareNativePrint);
+document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='p'){event.preventDefault();$('#print').click()}});
 document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();$(ev.shiftKey?'#redo':'#undo').click()}if(ev.key==='Delete'||ev.key==='Backspace'){$('#delete').click();ev.preventDefault()}const e=state.elements.find(e=>e.id===selected);if(e&&e.type==='text'&&(ev.key==='Enter'||ev.key==='F2')){ev.preventDefault();startInlineEdit(e);return}if(e&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)){ev.preventDefault();change(()=>{const n=ev.shiftKey?1:.5;e.x=Math.max(0,e.x+(ev.key==='ArrowRight'?n:ev.key==='ArrowLeft'?-n:0));e.y=Math.max(0,e.y+(ev.key==='ArrowDown'?n:ev.key==='ArrowUp'?-n:0))})}});window.addEventListener('resize',render);renderLeft();render();
