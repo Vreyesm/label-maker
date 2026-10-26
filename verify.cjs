@@ -28,13 +28,47 @@ assert(run(`resizedBounds({x:5,y:7,w:20,h:10},-100,-100).h===.5`));
 // For rotated elements the opposite corner stays fixed while resizing.
 assert(run(`(()=>{const a={x:5,y:7,w:20,h:10},b=resizedBounds(a,8,12,35),r=35*Math.PI/180;const anchor=o=>({x:o.x+o.w/2-Math.cos(r)*o.w/2+Math.sin(r)*o.h/2,y:o.y+o.h/2-Math.sin(r)*o.w/2-Math.cos(r)*o.h/2});return Math.abs(anchor(a).x-anchor(b).x)<1e-8&&Math.abs(anchor(a).y-anchor(b).y)<1e-8})()`));
 // Text fit uses the entire physical sticker width, regardless of its old box.
-assert(run(`(()=>{const e=el('text',20,12,15,8,'BODEGA',{size:4}),f=fitTextToSticker(e,{w:100,h:60});return f.x===0&&f.w===100&&Math.abs(measureText('BODEGA',{...e,...f})-100)<1e-8})()`));
-assert(run(`(()=>{const e=el('text',20,12,15,8,'{{producto}}',{size:4}),f=fitTextToSticker(e,{w:80,h:50},{producto:'CAFÉ MOLIDO'});return f.w===80&&Math.abs(measureText('CAFÉ MOLIDO',{...e,...f})-80)<1e-8})()`));
+assert(run(`(()=>{const e=el('text',20,12,15,8,'BODEGA',{size:4}),f=fitTextToSticker(e,{w:100,h:60});return f.x===5&&f.w===90&&Math.abs(measureText('BODEGA',{...e,...f})-90)<1e-8})()`));
+assert(run(`(()=>{const e=el('text',20,12,15,8,'{{producto}}',{size:4}),f=fitTextToSticker(e,{w:80,h:50},{producto:'CAFÉ MOLIDO'});return f.x===4&&f.w===72&&Math.abs(measureText('CAFÉ MOLIDO',{...e,...f})-72)<1e-8})()`));
 assert(run(`fitTextToSticker(el('text',0,0,10,5,''),{w:100,h:60})===null`));
 assert(run(`(()=>{const f=fitTextToSticker(el('text',1,1,10,5,'A'),{w:100,h:10});return f.h<=10&&f.y>=0})()`));
+// Fit leaves proportional padding even on small labels and multiline text.
+assert(run(`(()=>{const f=fitTextToSticker(el('text',0,0,5,3,'A'),{w:10,h:10});return f.x===.5&&f.w===9&&f.y>=.5&&f.y+f.h<=9.5})()`));
+assert(run(`(()=>{const f=fitTextToSticker(el('text',0,0,5,3,'UNO\\nDOS'),{w:100,h:40});return f.x===5&&f.w===90&&f.y>=2&&f.y+f.h<=38})()`));
+assert(run(`(()=>{const e=el('text',0,0,50,10,'Texto');setTextSize(e,24);return Math.abs(e.size-24*25.4/72)<1e-9&&textSizeInPoints(e)===24})()`));
+assert(run(`(()=>{const e=el('text',0,0,20,2,'Línea larga');setTextSize(e,36);return e.h>=textLines(e,e.text).length*e.size*1.2})()`));
+assert(run(`(()=>{const e=el('text',0,0,50,10,'Texto'),size=e.size;return !setTextSize(e,NaN)&&!setTextSize(e,0)&&!setTextSize(e,1001)&&e.size===size})()`));
+// Print output has physical page dimensions and contains no editor chrome.
+const printEl=run(`el('text',5,6,90,30,'BODEGA\\nASEO',{size:8,align:'center'})`);
+const sampleDoc={name:'Bodega',w:100,h:60,bg:'#ffffff',elements:[printEl]};
+context.sampleDoc=sampleDoc;
+assert.deepEqual(JSON.parse(run(`JSON.stringify(paperLayout(sampleDoc,'label'))`)),{w:100,h:60,margin:0,gap:0,cols:1,rows:1,capacity:1,paper:'label'});
+assert(run(`paperLayout(sampleDoc,'a4').cols===1&&paperLayout(sampleDoc,'a4').rows===4`));
+assert(run(`paperLayout(sampleDoc,'letter').capacity===4`));
+assert(run(`paperLayout({...sampleDoc,w:250,h:100},'a4').w===297`));
+assert.throws(()=>run(`paperLayout({...sampleDoc,w:300,h:300},'a4')`));
+assert.throws(()=>run(`paperLayout(sampleDoc,'bad')`));
+assert(run(`buildPrintJob(sampleDoc,[{}],2,'label').pages===2`));
+assert(run(`buildPrintJob(sampleDoc,[{}],5,'a4').pages===2`));
+assert(run(`buildPrintJob(sampleDoc,[{}],4,'a4').pages===1`));
+assert(run(`(buildPrintJob(sampleDoc,[{}],4,'a4').html.match(/class="print-label"/g)||[]).length===4`));
+assert.throws(()=>run(`buildPrintJob(sampleDoc,[{}],501)`));
+assert.throws(()=>run(`buildPrintJob(sampleDoc,[{}],0)`));
+assert.throws(()=>run(`buildPrintJob({...sampleDoc,elements:[el('text',1,1,20,10,'{{missing}}')]},[{}],1)`));
+assert(run(`(()=>{const job=buildPrintJob({...sampleDoc,elements:[el('text',1,1,40,10,'{{producto}} {{numero}}')]},[{producto:'A'},{producto:'B'}],2,'label');return job.total===4&&job.pages===4&&job.html.includes('A 0001')&&job.html.includes('B 0002')})()`));
+const printHTML=run(`printDocument(buildPrintJob(sampleDoc,[{}],1,'label'),'Bodega')`);
+assert(printHTML.includes('@page{size:100mm 60mm;margin:0}'));
+assert(printHTML.includes('width:100mm!important;height:60mm!important'));
+assert(!/resize-handle|class="element|selected|id="board|canvas-area|top-ruler|<script/.test(printHTML));
+assert(printHTML.includes('text-anchor="middle"'));
+// Orientation rotates the complete design reversibly, with exact physical dimensions.
+assert(run(`(()=>{const doc={w:100,h:60,elements:[el('text',5,10,90,8,'Bodega',{rotation:25})]},before=JSON.stringify(doc);orientLabel(doc,'portrait');return doc.w===60&&doc.h===100&&doc.elements[0].rotation===115&&doc.elements[0].text==='Bodega'&&orientLabel(doc,'portrait')===false&&(orientLabel(doc,'landscape'),JSON.stringify(doc)===before)})()`));
+assert(run(`(()=>{const e=el('text',5,10,40,10,'Hola'),doc={w:100,h:60,elements:[e]},before=JSON.stringify(e);orientLabel(doc,'portrait',false);return doc.w===60&&doc.h===100&&JSON.stringify(e)===before})()`));
+assert(run(`(()=>{const doc={w:60,h:60,elements:[]};return orientLabel(doc,'portrait')===false&&doc.w===60&&doc.h===60})()`));
+assert(run(`(()=>{const doc={w:100,h:60,bg:'#ffffff',elements:[el('text',5,10,90,8,'Bodega')]};orientLabel(doc,'portrait');const job=buildPrintJob(doc,[{}],1,'label');return job.css.includes('@page{size:60mm 100mm')&&job.html.includes('width="60mm" height="100mm"')&&job.html.includes('rotate(90')})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
-context.document.createElement=()=>fakeInput;
+context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
 context.document.querySelector=selector=>selector==='#canvas-area'?{clientWidth:590}:fakeNode;
 assert.equal(run(`fitWidth=true;zoom=1;scale()`),5);
 assert.equal(run(`state.h=200;scale()`),5); // Width fit ignores label height.
@@ -47,4 +81,18 @@ run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Escape';active
 assert.equal(run(`state.elements[0].text`),'Texto editado');
 run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Confirmado';activeEditor.input.onkeydown({key:'Enter',ctrlKey:true,stopPropagation(){},preventDefault(){}})`);
 assert.equal(run(`state.elements[0].text`),'Confirmado');assert.equal(run(`activeEditor`),null);
-console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho y edición directa.');
+// Exercise the visible toolbar controls with the selected element.
+const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text'].map(id=>[id,{innerHTML:''}]));
+const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));
+controls['#text-toolbar'].querySelectorAll=()=>alignButtons;
+context.document.querySelector=id=>controls[id]||fakeNode;
+run(`selected=state.elements[0].id;state.elements[0].size=12*MM_PER_PT;renderTextToolbar()`);
+assert(controls['#text-toolbar'].innerHTML.includes('aria-label="Centrar texto"'));
+assert(controls['#text-toolbar'].innerHTML.includes('value="12"'));
+controls['#font-larger'].onclick();assert.equal(run(`textSizeInPoints(state.elements[0])`),13);
+run(`renderTextToolbar()`);controls['#font-smaller'].onclick();assert.equal(run(`textSizeInPoints(state.elements[0])`),12);
+alignButtons[1].onclick();assert.equal(run(`state.elements[0].align`),'center');
+controls['#font-points'].onchange({target:{value:'24'}});assert.equal(run(`textSizeInPoints(state.elements[0])`),24);
+controls['#toolbar-fit-text'].onclick();assert.equal(run(`state.elements[0].x`),5);assert.equal(run(`state.elements[0].w`),90);
+run(`selected=null;renderTextToolbar()`);assert(controls['#text-toolbar'].innerHTML.includes('Selecciona un texto'));assert(controls['#text-toolbar'].innerHTML.includes('disabled'));
+console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa e impresión en mm y hojas.');
