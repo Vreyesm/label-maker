@@ -83,6 +83,29 @@ assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),val
 assert(run(`buildPrintJob({...sampleDoc,elements:[clone(testTable)]},[{}],2).html.includes('data-cell="1,1"')`));
 assert.throws(()=>run(`buildPrintJob({...sampleDoc,elements:[{...clone(testTable),cells:[['Campo','Valor'],['{{missing}}','001']]}]},[{}],1)`));
 assert(run(`tableProperties({...testTable,cells:[['<b>','Valor'],['Lote','001']]}).includes('&lt;b&gt;')`));
+// Physical track sizes are preserved as weights across table resizing, storage and print.
+assert(run(`(()=>{const e=clone(testTable);resizeTableTrack(e,'col',0,12,[40,40]);const t=tableTracks(e);return t.cols[0]===52&&t.cols[1]===28&&e.w===80&&e.cells[1][1]==='001'})()`));
+assert(run(`(()=>{const e=clone(testTable);resizeTableTrack(e,'row',0,-100,[12,12]);const t=tableTracks(e);return t.rows[0]===1&&t.rows[1]===23})()`));
+assert(run(`(()=>{const e=clone(testTable);resizeTableTrack(e,'col',0,12,[40,40]);e.w=160;return tableTracks(e).cols[0]===104&&tableTracks(e).cols[1]===56})()`));
+assert(run(`(()=>{const e=clone(testTable);resizeTableTrack(e,'col',0,12,[40,40]);resizeTable(e,3,3);return e.colSizes.length===3&&e.colSizes[0]===52&&e.colSizes[1]===28&&e.colSizes[2]===40&&e.cells[1][1]==='001'})()`));
+assert(run(`(()=>{const e={...clone(testTable),colSizes:[3,1],rowSizes:[1,3]},box=tableCellBox(e,1,1);return box.x===60&&box.y===6&&box.w===20&&box.h===18})()`));
+assert(run(`(()=>{const e={...clone(testTable),colSizes:[3,1],rowSizes:[1,3]},cell=tableCellAt(e,65,10);return cell.row===1&&cell.col===1})()`));
+assert(run(`(()=>{const doc=validate({...sampleDoc,elements:[{...clone(testTable),colSizes:[3,1],rowSizes:[1,3]}]});return doc.elements[0].colSizes[0]===3&&svgDoc(doc).includes('translate(60 6)')})()`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),colSizes:[0,1]}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),rowSizes:[1]}]})`));
+assert(run(`elementContent(testTable).includes('data-table-axis="col"')`));
+assert(run(`!buildPrintJob({...sampleDoc,elements:[clone(testTable)]},[{}],1).html.includes('table-col-grip')`));
+assert(run(`Math.abs(localDelta(10,0,90).y+10)<1e-8`));
+// Black is shared by screen/export/print; only the former default green is migrated.
+assert.equal(run(`el('text',0,0,10,5).color`),'#000000');
+assert.equal(run(`validate({...sampleDoc,elements:[el('text',0,0,10,5,'Hola',{color:'#182c21'})]}).elements[0].color`),'#000000');
+assert.equal(run(`validate({...sampleDoc,elements:[el('text',0,0,10,5,'Hola',{color:'#ff0000'})]}).elements[0].color`),'#ff0000');
+assert(run(`svgDoc({...sampleDoc,elements:[el('text',0,0,10,5,'Hola')]}).includes('fill="#000000"')`));
+// Full view fit accounts for both dimensions, including tall and very small viewports.
+assert(run(`(()=>{const d={w:100,h:60},b={width:245,height:100},k=fittedScale(d,b);return d.w*k<=b.width&&d.h*k<=b.height})()`));
+assert(run(`(()=>{const d={w:60,h:150},b={width:400,height:120},k=fittedScale(d,b);return d.w*k<=b.width&&d.h*k<=b.height})()`));
+assert(run(`fittedScale({w:100,h:60},{width:300,height:100},'width')===3`));
+assert(run(`fittedScale({w:100,h:60},{width:1,height:1})>0`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
@@ -98,6 +121,28 @@ run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Escape';active
 assert.equal(run(`state.elements[0].text`),'Texto editado');
 run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Confirmado';activeEditor.input.onkeydown({key:'Enter',ctrlKey:true,stopPropagation(){},preventDefault(){}})`);
 assert.equal(run(`state.elements[0].text`),'Confirmado');assert.equal(run(`activeEditor`),null);
+// Double-click cell editing uses the cell's own canvas rectangle and commits one undo step.
+run(`let directTable=el('table',0,0,80,24,'',{rows:2,cols:2,cells:[['Campo','Valor'],['Lote','001']],header:true,colSizes:[3,1],rowSizes:[1,3]});state.elements.push(directTable);history=[];`);
+run(`startInlineEdit(directTable,undefined,{row:1,col:1});activeEditor.input.value='Nuevo lote';finishInlineEdit()`);
+assert.equal(run(`directTable.cells[1][1]`),'Nuevo lote');assert.equal(run(`history.length`),1);
+assert.equal(run(`history[0].elements.find(e=>e.id===directTable.id).cells[1][1]`),'001');
+run(`startInlineEdit(directTable,undefined,{row:1,col:1});activeEditor.input.value='Cancelar';finishInlineEdit(false)`);
+assert.equal(run(`directTable.cells[1][1]`),'Nuevo lote');assert.equal(run(`history.length`),1);
+run(`startInlineEdit(directTable,undefined,{row:0,col:0});activeEditor.input.value='Cabecera';activeEditor.input.onkeydown({key:'Tab',stopPropagation(){},preventDefault(){}})`);
+assert.equal(run(`directTable.cells[0][0]`),'Cabecera');assert.equal(run(`activeEditor.cell.col`),1);
+run(`activeEditor.input.onkeydown({key:'Tab',shiftKey:true,stopPropagation(){},preventDefault(){}})`);
+assert.equal(run(`activeEditor.cell.col`),0);run(`finishInlineEdit(false)`);
+// A divider drag keeps the total width fixed and is recorded as a single undo action.
+const dragNode={setPointerCapture(){},innerHTML:''};context.dragNode=dragNode;
+run(`history=[];fitWidth=false;fitScreen=false;zoom=1;beginTableTrackResize({clientX:0,clientY:0,pointerId:1},dragNode,directTable,'col',0)`);
+dragNode.onpointermove({clientX:10,clientY:0});dragNode.onpointermove({clientX:20,clientY:0});
+assert.equal(run(`history.length`),1);assert(run(`Math.abs(tableTracks(directTable).cols.reduce((a,b)=>a+b)-80)<1e-8`));
+assert(run(`tableTracks(directTable).cols[0]>60`));dragNode.onpointerup();
+// Grid controls the actual sticker overlay and its spacing tracks zoom.
+const gridState={},gridBoard={classList:{toggle(name,value){gridState[name]=value}},style:{setProperty(name,value){gridState[name]=value}}};
+const previousQuery=context.document.querySelector;context.document.querySelector=id=>id==='#board'?gridBoard:previousQuery(id);
+run(`applyGrid(true,4)`);assert.equal(gridState['show-grid'],true);assert.equal(gridState['--grid-step'],'20px');
+run(`applyGrid(false,4)`);assert.equal(gridState['show-grid'],false);context.document.querySelector=previousQuery;
 // Exercise the visible toolbar controls with the selected element.
 const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text'].map(id=>[id,{innerHTML:''}]));
 const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));

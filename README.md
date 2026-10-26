@@ -77,7 +77,7 @@ Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, 
 - Arrastra el cuadrado de la esquina inferior derecha del elemento seleccionado para cambiar el ancho y el alto. El texto se redistribuye sin modificar la tipografía.
 - Haz doble clic sobre el texto, pulsa Enter/F2 con el texto seleccionado o usa **Editar en el lienzo**. Ctrl/⌘+Enter confirma; Escape cancela; hacer clic fuera guarda.
 - **Ajustar al ancho del sticker** extiende el cuadro de texto al 90% del ancho de la etiqueta, dejando un 5% de margen a cada lado, y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura dejando también un 5% de margen superior e inferior; reinicia la rotación. Con CSV se calcula sobre el registro visible.
-- **Vista al ancho** solo controla el zoom del área de trabajo.
+- **Vista al ancho** ajusta el zoom al ancho disponible. **Ajustar a pantalla** encaja toda la etiqueta considerando tanto ancho como alto del área visible.
 - Los botones de alineación ajustan el texto dentro de su cuadro: izquierda, centro, derecha o justificado. El justificado distribuye las palabras de las líneas completas; la última línea de cada párrafo queda a la izquierda.
 - **Centrar en etiqueta** centra el cuadro completo horizontal y verticalmente.
 
@@ -94,9 +94,11 @@ En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** interc
 ## Texto y tablas
 
 - La barra sobre el lienzo permite alinear el texto arriba, al centro vertical o abajo dentro del cuadro. Esta alineación también se respeta en el SVG, al editar sobre el lienzo y al imprimir.
-- En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda del lienzo enfoca su editor en el panel.
+- En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda permite escribir directamente sobre la tabla del lienzo. Tab/Mayús+Tab cambia de celda; Ctrl/⌘+Enter confirma y Escape cancela.
 - Las tablas se pueden mover, redimensionar, girar, duplicar, deshacer, guardar y exportar. Las celdas admiten campos CSV `{{campo}}` y consecutivos `{{numero}}`.
 
 ## Plantillas básicas
 
 En Plantillas → Básicas puedes elegir **Solo texto** (100 × 60 mm) o **Texto vertical** (60 × 100 mm, con el texto girado 90°). Ambas contienen un único cuadro de texto centrado, editable, con margen y sin códigos ni imágenes. Las medidas y el contenido se pueden cambiar como en los demás diseños.
+
+Las divisiones interiores de una tabla seleccionada se pueden arrastrar para ajustar el ancho de columnas y el alto de filas. Los tamaños relativos se conservan al guardar, redimensionar el cuadro completo, girar, exportar e imprimir. La cuadrícula visible dentro del sticker representa pasos de 5 mm y es únicamente una guía de edición. El color predeterminado de texto y bordes es negro; los diseños con el antiguo tono verde predeterminado se convierten a negro al abrirse.
