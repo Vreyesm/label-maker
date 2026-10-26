@@ -83,15 +83,16 @@ Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, 
 
 Los controles principales de texto están en una barra sobre el lienzo: A−, tamaño en puntos (pt), A+, negrita e iconos de alineación con el botón central claramente marcado. Al aumentar la fuente, el cuadro crece en altura para mostrar las nuevas líneas.
 
-## Impresión y papel
+## Impresión
 
-El botón Imprimir y Ctrl/⌘+P abren la configuración de papel. La impresión usa un documento independiente que contiene únicamente los SVG de las etiquetas: sin cuadrícula, reglas, selección, tiradores ni controles del editor. El menú de impresión del navegador también prepara la misma salida mediante `beforeprint`.
-
-- **Etiqueta / rollo**: una etiqueta por página, con las dimensiones exactas del diseño.
-- **A4 o carta**: etiquetas a tamaño real en una cuadrícula, con 10 mm de margen y 3 mm entre etiquetas. La orientación cambia si es necesario para que la etiqueta quepa; no se reduce la escala. No es una plantilla para hojas adhesivas precortadas.
-- En el diálogo del sistema, seleccionar el papel correspondiente, escala 100%, márgenes ninguno y desactivar encabezados y pies. La aplicación no puede modificar estos ajustes del controlador. Para PDF, elegir Guardar como PDF.
-- La vista previa de la aplicación es de la etiqueta; la vista del sistema muestra su distribución en la hoja.
+El botón Imprimir y Ctrl/⌘+P muestran una vista previa limpia y abren el diálogo del sistema. La impresora, el papel y su orientación se eligen allí: la aplicación no tiene selector de papel ni fuerza un tamaño de página. Se mantiene una etiqueta por página y el tamaño físico del diseño en mm. Selecciona escala 100% para conservar esas medidas. Para PDF, elige Guardar como PDF en el diálogo del sistema.
 
 ## Orientación de la etiqueta
 
 En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** intercambian ancho y alto. Por defecto **Girar también el diseño** rota todo el contenido 90° al pasar a vertical y lo gira de vuelta al volver a horizontal, manteniendo tamaños y posiciones relativas. Desmarca esa opción para cambiar solo el formato del lienzo y redistribuir el contenido manualmente. En etiquetas cuadradas los botones están desactivados. El cambio se puede deshacer y se conserva al guardar; SVG e impresión usan las nuevas dimensiones.
+
+## Texto y tablas
+
+- La barra sobre el lienzo permite alinear el texto arriba, al centro vertical o abajo dentro del cuadro. Esta alineación también se respeta en el SVG, al editar sobre el lienzo y al imprimir.
+- En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda del lienzo enfoca su editor en el panel.
+- Las tablas se pueden mover, redimensionar, girar, duplicar, deshacer, guardar y exportar. Las celdas admiten campos CSV `{{campo}}` y consecutivos `{{numero}}`.
