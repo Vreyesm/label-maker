@@ -1,5 +1,5 @@
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
-const code=fs.readFileSync(__dirname+'/dist/app.js','utf8').split("$('#board').onpointerdown=")[0];
+const code=fs.readFileSync(__dirname+'/dist/app.js','utf8').split("$('#board').ondblclick=")[0];
 const context=vm.createContext({console,localStorage:{getItem:()=>null},document:{querySelector:()=>null}});vm.runInContext(code,context);
 const run=s=>vm.runInContext(s,context);
 assert(run(`barcode({color:'#000000'},'7501234567893').svg.includes('7501234567893')`));
@@ -14,4 +14,37 @@ assert(run(`svgDoc({...state,elements:[el('text',1,1,20,5,'<script>')]}).include
 assert.throws(()=>run(`validate({...state,w:0})`));
 assert.throws(()=>run(`validate({...state,elements:[el('image',1,1,10,10,'',{src:'https://example.com/track'})]})`));
 for(const t of ['product','shipping','price','stock'])assert(run(`svgDoc({w:templates.find(t=>t.id==='${t}').w,h:templates.find(t=>t.id==='${t}').h,bg:'#ffffff',elements:templates.find(t=>t.id==='${t}').elements()}).includes('<svg')`));
-console.log('15 comprobaciones correctas: EAN-13, Code 39, CSV, variables, SVG, plantillas e importación.');
+// Layout must wrap consistently for the canvas, SVG export and print.
+assert(run(`textLines(el('text',0,0,12,30,'',{size:3}), 'uno dos tres cuatro').length > 1`));
+assert(run(`textLines(el('text',0,0,10,30,'',{size:3}), 'ABCDEFGHIJKLMN').every(l=>measureText(l.text,{size:3})<=10)`));
+assert.equal(run(`textLines(el('text',0,0,50,30), 'uno\\ndos').length`),2);
+assert(run(`textSVG(el('text',0,0,40,20,'',{align:'center'}),'Hola').includes('text-anchor="middle"')`));
+assert(run(`textSVG(el('text',0,0,40,20,'',{align:'right'}),'Hola').includes('x="40"')`));
+assert(run(`textSVG(el('text',0,0,14,30,'',{align:'justify'}),'uno dos tres cuatro').includes('<text x="')`));
+assert.deepEqual(JSON.parse(run(`JSON.stringify(centeredPosition({w:20,h:10},100,60))`)),{x:40,y:25});
+assert.deepEqual(JSON.parse(run(`JSON.stringify(resizedBounds({x:5,y:7,w:20,h:10},10,5))`)),{w:30,h:15,x:5,y:7});
+assert(run(`resizedBounds({x:5,y:7,w:20,h:10},-100,-100).w===1`));
+assert(run(`resizedBounds({x:5,y:7,w:20,h:10},-100,-100).h===.5`));
+// For rotated elements the opposite corner stays fixed while resizing.
+assert(run(`(()=>{const a={x:5,y:7,w:20,h:10},b=resizedBounds(a,8,12,35),r=35*Math.PI/180;const anchor=o=>({x:o.x+o.w/2-Math.cos(r)*o.w/2+Math.sin(r)*o.h/2,y:o.y+o.h/2-Math.sin(r)*o.w/2-Math.cos(r)*o.h/2});return Math.abs(anchor(a).x-anchor(b).x)<1e-8&&Math.abs(anchor(a).y-anchor(b).y)<1e-8})()`));
+// Text fit uses the entire physical sticker width, regardless of its old box.
+assert(run(`(()=>{const e=el('text',20,12,15,8,'BODEGA',{size:4}),f=fitTextToSticker(e,{w:100,h:60});return f.x===0&&f.w===100&&Math.abs(measureText('BODEGA',{...e,...f})-100)<1e-8})()`));
+assert(run(`(()=>{const e=el('text',20,12,15,8,'{{producto}}',{size:4}),f=fitTextToSticker(e,{w:80,h:50},{producto:'CAFÉ MOLIDO'});return f.w===80&&Math.abs(measureText('CAFÉ MOLIDO',{...e,...f})-80)<1e-8})()`));
+assert(run(`fitTextToSticker(el('text',0,0,10,5,''),{w:100,h:60})===null`));
+assert(run(`(()=>{const f=fitTextToSticker(el('text',1,1,10,5,'A'),{w:100,h:10});return f.h<=10&&f.y>=0})()`));
+const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
+const fakeNode={classList:{add(){}},append(){}};
+context.document.createElement=()=>fakeInput;
+context.document.querySelector=selector=>selector==='#canvas-area'?{clientWidth:590}:fakeNode;
+assert.equal(run(`fitWidth=true;zoom=1;scale()`),5);
+assert.equal(run(`state.h=200;scale()`),5); // Width fit ignores label height.
+run(`state.h=60;fitWidth=false;render=()=>{};persist=()=>{};history=[];future=[];`);
+run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Texto editado';finishInlineEdit()`);
+assert.equal(run(`state.elements[0].text`),'Texto editado');assert.equal(run(`history.length`),1);
+run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Cancelar';finishInlineEdit(false)`);
+assert.equal(run(`state.elements[0].text`),'Texto editado');assert.equal(run(`history.length`),1);
+run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Escape';activeEditor.input.onkeydown({key:'Escape',stopPropagation(){},preventDefault(){}})`);
+assert.equal(run(`state.elements[0].text`),'Texto editado');
+run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Confirmado';activeEditor.input.onkeydown({key:'Enter',ctrlKey:true,stopPropagation(){},preventDefault(){}})`);
+assert.equal(run(`state.elements[0].text`),'Confirmado');assert.equal(run(`activeEditor`),null);
+console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho y edición directa.');

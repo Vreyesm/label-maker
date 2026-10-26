@@ -71,3 +71,12 @@ Esta versión no incluye QR, RFID, importación .btw de BarTender, conexión SQL
 ## Verificación
 
 Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, sustitución de variables, SVG, plantillas y validación de archivos. No se ha realizado verificación visual automatizada ni impresión física en esta sesión.
+
+## Edición del lienzo
+
+- Arrastra el cuadrado de la esquina inferior derecha del elemento seleccionado para cambiar el ancho y el alto. El texto se redistribuye sin modificar la tipografía.
+- Haz doble clic sobre el texto, pulsa Enter/F2 con el texto seleccionado o usa **Editar en el lienzo**. Ctrl/⌘+Enter confirma; Escape cancela; hacer clic fuera guarda.
+- **Ajustar al ancho del sticker** extiende el cuadro de texto al ancho total de la etiqueta y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura a la del sticker; reinicia la rotación. Con CSV se calcula sobre el registro visible.
+- **Vista al ancho** solo controla el zoom del área de trabajo.
+- Los botones de alineación ajustan el texto dentro de su cuadro: izquierda, centro, derecha o justificado. El justificado distribuye las palabras de las líneas completas; la última línea de cada párrafo queda a la izquierda.
+- **Centrar en etiqueta** centra el cuadro completo horizontal y verticalmente.
