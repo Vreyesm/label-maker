@@ -47,7 +47,7 @@ Abre http://localhost:8080. Verificación lógica: `node verify.cjs`.
 
 ## Funciones
 
-- Cuatro plantillas: producto, envío, precio e inventario; diseño vacío.
+- Seis plantillas: solo texto, texto vertical, producto, envío, precio e inventario; diseño vacío.
 - Tamaños predefinidos y personalizados de 10 a 300 mm por lado.
 - Texto con tipografía, tamaño, negrita, alineación y color.
 - Imágenes PNG/JPEG/WebP de hasta 3 MB; líneas y rectángulos.
@@ -96,3 +96,7 @@ En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** interc
 - La barra sobre el lienzo permite alinear el texto arriba, al centro vertical o abajo dentro del cuadro. Esta alineación también se respeta en el SVG, al editar sobre el lienzo y al imprimir.
 - En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda del lienzo enfoca su editor en el panel.
 - Las tablas se pueden mover, redimensionar, girar, duplicar, deshacer, guardar y exportar. Las celdas admiten campos CSV `{{campo}}` y consecutivos `{{numero}}`.
+
+## Plantillas básicas
+
+En Plantillas → Básicas puedes elegir **Solo texto** (100 × 60 mm) o **Texto vertical** (60 × 100 mm, con el texto girado 90°). Ambas contienen un único cuadro de texto centrado, editable, con margen y sin códigos ni imágenes. Las medidas y el contenido se pueden cambiar como en los demás diseños.
