@@ -124,3 +124,24 @@ El área de edición muestra el contenido, la selección y los tiradores que sob
 - Una vez guardado un diseño, sus cambios se actualizan en esa misma entrada. **Guardar como copia** crea una entrada independiente.
 - Al volver a abrir la página en el mismo navegador y dominio, se restaura el diseño de trabajo y su última vista: pestaña, filtro, zoom/encaje, cuadrícula, desplazamiento, selección y datos CSV. Los cambios de edición en curso se confirman al salir de la página.
 - El guardado es local al navegador. Para mover diseños entre dispositivos o dominios, descarga e importa el archivo JSON. Al importar un archivo se abre como una copia de trabajo independiente.
+
+## Filas y columnas en el lienzo
+
+Al seleccionar una tabla aparecen cabeceras con letras para columnas y números para filas. Haz clic en una cabecera para aplicar los formatos de la barra a toda esa fila o columna. Arrastra el extremo de la cabecera o introduce su tamaño en mm para redimensionarla completa sin cambiar las demás; la tabla crece o se reduce. Las divisiones interiores siguen permitiendo redistribuir dos filas/columnas vecinas conservando el tamaño total.
+
+Cada cabecera tiene un **+** que inserta una columna a su derecha o una fila debajo. La barra también permite añadir o eliminar la fila/columna seleccionada. Se mantienen contenido, formatos y tamaños de las demás celdas; la tabla admite de 1 a 10 filas/columnas. Los controles son guías de edición y no se imprimen.
+
+## Campos automáticos
+
+Escribe estos campos en textos o celdas; no requieren CSV:
+
+| Campo | Resultado |
+| --- | --- |
+| `{{fecha}}` | Fecha local, DD/MM/AAAA |
+| `{{fecha_iso}}` | Fecha local, AAAA-MM-DD |
+| `{{hora}}` | Hora local, HH:mm |
+| `{{fecha_hora}}` | Fecha y hora local |
+| `{{dia}}`, `{{mes}}`, `{{anio}}` / `{{año}}` | Componentes de la fecha |
+| `{{numero}}` | Consecutivo existente: 0001, 0002… |
+
+Elementos incluye botones para insertar Fecha actual y Hora actual. El lote de impresión toma una sola fecha/hora al generarse para que todas sus etiquetas sean consistentes. Si el CSV contiene una columna con el mismo nombre que un campo de fecha/hora, se usa su valor; `{{numero}}` conserva su comportamiento de consecutivo reservado.
