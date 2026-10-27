@@ -1,7 +1,7 @@
 'use strict';
 const $=s=>document.querySelector(s),clone=x=>JSON.parse(JSON.stringify(x));
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-const CELL_FORMAT_KEYS=['size','bold','align','valign','font','color'];
+const CELL_FORMAT_KEYS=['size','bold','align','valign','font','color','textRotation'];
 let fitWidth=false, fitScreen=false, activeEditor=null, activeCell=null;
 let seq=0;const el=(type,x,y,w,h,text='',extra={})=>({id:++seq,type,x,y,w,h,text,size:3,color:'#000000',bold:false,align:'left',rotation:0,...extra});
 const templates=[
@@ -90,9 +90,15 @@ function textVerticalOffset(e,text){
  return e.valign==='middle'?free/2:e.valign==='bottom'?free:0;
 }
 function selectedTableCell(e){return activeCell&&activeCell.id===e.id&&activeCell.row>=0&&activeCell.row<e.rows&&activeCell.col>=0&&activeCell.col<e.cols?activeCell:null}
+function normalizedAngle(value=0){return ((value%360)+360)%360}
 function cellTextStyle(e,row,col){
- const box=tableCellBox(e,row,col);
- return {...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:!!(e.bold||(e.header&&row===0)),align:e.align||'left',valign:e.valign||'middle',...(e.cellFormats?.[row]?.[col]||{})};
+ const box=tableCellBox(e,row,col),style={...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:!!(e.bold||(e.header&&row===0)),align:e.align||'left',valign:e.valign||'middle',textRotation:e.textRotation||0,...(e.cellFormats?.[row]?.[col]||{})};
+ if(normalizedAngle(style.textRotation)%180===90)[style.w,style.h]=[style.h,style.w];
+ return style;
+}
+function rotateTextTarget(target,delta,reset=false){
+ if(target.e.type==='text')target.e.rotation=reset?0:normalizedAngle((target.e.rotation||0)+delta);
+ else applyTextFormat(target,'textRotation',reset?0:normalizedAngle((target.style.textRotation||0)+delta));
 }
 function setCellFormat(e,cell,key,value){
  if(!CELL_FORMAT_KEYS.includes(key))throw Error('Formato de celda no válido.');
@@ -129,6 +135,7 @@ function validateCellFormats(e){
  if(e.cellFormats===undefined)return;
  if(!Array.isArray(e.cellFormats)||e.cellFormats.length!==e.rows||!e.cellFormats.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(format=>format&&typeof format==='object'&&!Array.isArray(format)&&Object.entries(format).every(([key,value])=>{
   if(!CELL_FORMAT_KEYS.includes(key))return false;
+  if(key==='textRotation')return [0,90,180,270].includes(value);
   if(key==='size')return Number.isFinite(value)&&value>0&&value<=1000;
   if(key==='bold')return typeof value==='boolean';
   if(key==='align')return ['left','center','right','justify'].includes(value);
@@ -160,7 +167,7 @@ function resizeTableTrack(e,axis,index,delta,original){
 function tableSVG(e,row,index){
  return e.cells.map((cells,r)=>cells.map((content,c)=>{
   const box=tableCellBox(e,r,c),cell=cellTextStyle(e,r,c);
-  return `<g data-cell="${r},${c}" transform="translate(${box.x} ${box.y})"><rect width="${box.w}" height="${box.h}" fill="${e.header&&r===0?'#f1f1f1':'#ffffff'}" stroke="${esc(e.color)}" stroke-width=".25"/><g transform="translate(${box.pad} ${box.pad})">${textSVG(cell,val(content,row,index))}</g></g>`;
+  return `<g data-cell="${r},${c}" transform="translate(${box.x} ${box.y})"><rect width="${box.w}" height="${box.h}" fill="${e.header&&r===0?'#f1f1f1':'#ffffff'}" stroke="${esc(e.color)}" stroke-width=".25"/><g transform="translate(${box.w/2} ${box.h/2}) rotate(${cell.textRotation}) translate(${-cell.w/2} ${-cell.h/2})">${textSVG(cell,val(content,row,index))}</g></g>`;
  }).join('')).join('');
 }
 function tableHandles(e){
@@ -214,9 +221,10 @@ function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewB
 function fitTextToSticker(e,doc,row={},index=0){
  const lines=val(e.text,row,index).split('\n'),longest=Math.max(...lines.map(t=>measureText(t,e)));
  if(!longest)return null;
- const margin=doc.w*.05,verticalMargin=doc.h*.05,w=doc.w-2*margin;
- const size=Math.min(e.size*w/longest,(doc.h-2*verticalMargin)/(1.2*lines.length)),h=size*1.2*lines.length;
- return {x:margin,w,size,h,y:Math.max(verticalMargin,Math.min(e.y,doc.h-verticalMargin-h)),rotation:0};
+ const angle=normalizedAngle(e.rotation||0),quarter=angle===90||angle===270;
+ const availableWidth=(quarter?doc.h:doc.w)*.9,availableHeight=(quarter?doc.w:doc.h)*.9;
+ const size=Math.min(e.size*availableWidth/longest,availableHeight/(1.2*lines.length)),h=size*1.2*lines.length,w=availableWidth;
+ return {x:(doc.w-w)/2,w,size,h,y:quarter?(doc.h-h)/2:Math.max(doc.h*.05,Math.min(e.y,doc.h*.95-h)),rotation:angle};
 }
 function orientLabel(doc,direction,rotateContent=true){
  if(!['portrait','landscape'].includes(direction))throw Error('Orientación no válida.');
@@ -249,7 +257,7 @@ function startInlineEdit(e,initial,cell=null){
  const original=cell?e.cells[cell.row][cell.col]:e.text;
  input.className=cell?'inline-text inline-cell':'inline-text';input.setAttribute('aria-label',cell?`Editar fila ${cell.row+1}, columna ${cell.col+1} en el lienzo`:'Editar texto en el lienzo');input.value=initial===undefined?original:initial;
  input.style.cssText=`font-family:${style.font||'Arial'};font-size:${style.size*k}px;font-weight:${style.bold?700:400};line-height:1.2;color:${style.color};text-align:${style.align||'left'}`;
- if(box){input.style.inset='auto';input.style.left=(box.x+box.pad)*k+'px';input.style.top=(box.y+box.pad)*k+'px';input.style.width=style.w*k+'px';input.style.height=style.h*k+'px'}
+ if(box){input.style.inset='auto';input.style.left=(box.x+box.w/2-style.w/2)*k+'px';input.style.top=(box.y+box.h/2-style.h/2)*k+'px';input.style.transform=`rotate(${style.textRotation}deg)`;input.style.transformOrigin='center';input.style.width=style.w*k+'px';input.style.height=style.h*k+'px'}
  node.classList.add(cell?'editing-cell':'editing');node.append(input);activeEditor={input,e,original,cell};
  input.onpointerdown=ev=>ev.stopPropagation();input.ondblclick=ev=>ev.stopPropagation();
  input.onkeydown=ev=>{
@@ -285,7 +293,8 @@ function verticalAlignmentIcon(align){
 function renderTextToolbar(){
  const target=formattingTarget(),e=target?.e,cell=target?.cell,style=target?.style,root=$('#text-toolbar'),disabled=!target;
  const label=cell?`Celda ${cell.row+1} · ${cell.col+1}`:e?.type==='table'?'Tabla completa':'Texto';
- root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
+ const angle=disabled?0:normalizedAngle(e.type==='table'?(style.textRotation||0):(e.rotation||0));
+ root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-rotation" role="group" aria-label="Girar texto"><button id="text-turn-left" title="Girar texto 90° a la izquierda" aria-label="Girar texto 90° a la izquierda" ${disabled?'disabled':''}>↶ 90°</button><button id="text-turn-right" title="Girar texto 90° a la derecha" aria-label="Girar texto 90° a la derecha" ${disabled?'disabled':''}>↷ 90°</button><button id="text-turn-reset" title="Restablecer giro del texto a 0°" aria-label="Restablecer giro del texto" ${disabled?'disabled':''}>${angle}°</button></div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
  root.onpointerdown=()=>{if(activeEditor)finishInlineEdit(true,false)};
  if(disabled)return;
  const set=(key,value)=>change(()=>applyTextFormat(target,key,value));
@@ -297,6 +306,9 @@ function renderTextToolbar(){
  $('#text-bold').onclick=()=>set('bold',!style.bold);
  root.querySelectorAll('[data-text-align]').forEach(button=>button.onclick=()=>set('align',button.dataset.textAlign));
  root.querySelectorAll('[data-text-valign]').forEach(button=>button.onclick=()=>set('valign',button.dataset.textValign));
+ $('#text-turn-left').onclick=()=>change(()=>rotateTextTarget(target,-90));
+ $('#text-turn-right').onclick=()=>change(()=>rotateTextTarget(target,90));
+ $('#text-turn-reset').onclick=()=>change(()=>rotateTextTarget(target,0,true));
  if(cell)$('#format-entire-table').onclick=()=>{activeCell=null;render()};
  $('#toolbar-fit-text').onclick=()=>{
   if(e.type==='table')change(()=>{if(cell)fitCellText(e,cell);else for(let r=0;r<e.rows;r++)for(let c=0;c<e.cols;c++)fitCellText(e,{row:r,col:c})});
@@ -308,7 +320,7 @@ function addElement(type){if(type==='image'){pickFile('image/png,image/jpeg,imag
 function pickFile(accept,callback){const input=$('#file');input.accept=accept;input.value='';input.onchange=()=>{if(input.files[0])callback(input.files[0])};input.click()}
 function download(name,content,type){let url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const delimiter=(text.split('\n')[0].match(/;/g)||[]).length>(text.split('\n')[0].match(/,/g)||[]).length?';':',';let result=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);result.push(row);row=[];cell=''}else cell+=c}if(quoted)throw Error('El CSV contiene comillas sin cerrar.');if(cell||row.length){row.push(cell);result.push(row)}return result}
-function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.type==='table')validateCellFormats(e);if(e.color.toLowerCase()==='#182c21')e.color='#000000';e.id=i+1});return d}
+function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.type==='table'){validateCellFormats(e);if(e.textRotation!==undefined&&![0,90,180,270].includes(e.textRotation))throw Error('Giro de texto de tabla inválido.');}if(e.color.toLowerCase()==='#182c21')e.color='#000000';e.id=i+1});return d}
 $('#board').ondblclick=event=>{
  const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle,[data-table-axis],.inline-text'))return;
  const e=state.elements.find(e=>e.id===+node.dataset.id);

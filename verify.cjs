@@ -118,6 +118,16 @@ assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cel
 assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'size',8);setCellFormat(e,{row:1,col:1},'color','#ff0000');applyTextFormat({e,cell:null},'size',4);return cellTextStyle(e,1,1).size===4&&cellTextStyle(e,0,0).size===4&&cellTextStyle(e,1,1).color==='#ff0000'})()`));
 assert(run(`(()=>{const e=clone(testTable),w=e.w,h=e.h;fitCellText(e,{row:1,col:1});const style=cellTextStyle(e,1,1);return measureText(e.cells[1][1],style)<=style.w+1e-8&&style.size*1.2<=style.h+1e-8&&e.w===w&&e.h===h})()`));
 assert(run(`(()=>{const e=clone(testTable);applyTextFormat({e,cell:null},'bold',false);return !cellTextStyle(e,0,0).bold&&!cellTextStyle(e,0,1).bold&&!cellTextStyle(e,1,0).bold})()`));
+// Cell text turns independently of the table and uses swapped layout dimensions.
+assert(run(`(()=>{const e=clone(testTable),before=cellTextStyle(e,1,1);setCellFormat(e,{row:1,col:1},'textRotation',90);const after=cellTextStyle(e,1,1);return after.w===before.h&&after.h===before.w&&after.textRotation===90&&(e.rotation||0)===0&&cellTextStyle(e,1,0).textRotation===0})()`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'textRotation',270);const job=buildPrintJob({...sampleDoc,elements:[e]},[{}],1);return job.html.includes('rotate(270)')&&job.html.includes('data-cell="1,1"')})()`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'textRotation',90);fitCellText(e,{row:1,col:1});const style=cellTextStyle(e,1,1);return style.textRotation===90&&style.size*1.2<=style.h+1e-8&&measureText(e.cells[1][1],style)<=style.w+1e-8})()`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'textRotation',90);const doc=validate(JSON.parse(JSON.stringify({...sampleDoc,elements:[e]})));return doc.elements[0].cellFormats[1][1].textRotation===90})()`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),textRotation:45}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[{textRotation:45},{}],[{},{}]]}]})`));
+assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:e};rotateTextTarget(target,90);rotateTextTarget(target,-90);return e.rotation===0})()`));
+assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:e};for(let i=0;i<4;i++)rotateTextTarget(target,90);return e.rotation===0})()`));
+assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola',{rotation:90}),f=fitTextToSticker(e,{w:60,h:100});return f.rotation===90&&f.w===90&&f.h<=54&&Math.abs(f.x+f.w/2-30)<1e-8&&Math.abs(f.y+f.h/2-50)<1e-8})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
@@ -156,7 +166,7 @@ const previousQuery=context.document.querySelector;context.document.querySelecto
 run(`applyGrid(true,4)`);assert.equal(gridState['show-grid'],true);assert.equal(gridState['--grid-step'],'20px');
 run(`applyGrid(false,4)`);assert.equal(gridState['show-grid'],false);context.document.querySelector=previousQuery;
 // Exercise the visible toolbar controls with the selected element.
-const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table'].map(id=>[id,{innerHTML:''}]));
+const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table','#text-turn-left','#text-turn-right','#text-turn-reset'].map(id=>[id,{innerHTML:''}]));
 const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));
 const verticalButtons=['top','middle','bottom'].map(a=>({dataset:{textValign:a}}));
 controls['#text-toolbar'].querySelectorAll=selector=>selector==='[data-text-valign]'?verticalButtons:alignButtons;
@@ -210,6 +220,17 @@ controls['#font-points'].onchange({target:{value:'14'}});
 assert(run(`Math.abs(cellTextStyle(editedTable,1,1).size-14*MM_PER_PT)<1e-9`));
 assert(run(`Math.abs(cellTextStyle(editedTable,1,0).size-14*MM_PER_PT)<1e-9`));
 assert.equal(run(`cellTextStyle(editedTable,1,1).color`),'#ff0000');
+// Rotation buttons operate on a selected cell and the inline editor mirrors the rotation.
+run(`activeCell={id:editedTable.id,row:1,col:1};renderTextToolbar()`);
+controls['#text-turn-right'].onclick();assert.equal(run(`cellTextStyle(editedTable,1,1).textRotation`),90);
+assert.equal(run(`cellTextStyle(editedTable,1,0).textRotation`),0);
+run(`renderTextToolbar()`);controls['#text-turn-left'].onclick();assert.equal(run(`cellTextStyle(editedTable,1,1).textRotation`),0);
+run(`renderTextToolbar()`);controls['#text-turn-right'].onclick();run(`renderTextToolbar()`);
+assert(controls['#text-toolbar'].innerHTML.includes('>90°</button>'));
+run(`startInlineEdit(editedTable,undefined,{row:1,col:1})`);assert.equal(fakeInput.style.transform,'rotate(90deg)');run(`finishInlineEdit(false);renderTextToolbar()`);
+controls['#text-turn-reset'].onclick();assert.equal(run(`cellTextStyle(editedTable,1,1).textRotation`),0);
+run(`activeCell=null;renderTextToolbar()`);controls['#text-turn-right'].onclick();
+assert.equal(run(`cellTextStyle(editedTable,0,0).textRotation`),90);assert.equal(run(`cellTextStyle(editedTable,1,1).textRotation`),90);
 // A saved design with cell formats must survive application startup, not just import.
 const persisted=JSON.parse(run(`JSON.stringify({...sampleDoc,name:'Tabla guardada',elements:[editedTable]})`));
 const reloaded=vm.createContext({console,localStorage:{getItem:key=>key==='labela-current'?JSON.stringify(persisted):null},document:{querySelector:()=>null}});

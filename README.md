@@ -76,7 +76,7 @@ Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, 
 
 - Arrastra el cuadrado de la esquina inferior derecha del elemento seleccionado para cambiar el ancho y el alto. El texto se redistribuye sin modificar la tipografía.
 - Haz doble clic sobre el texto, pulsa Enter/F2 con el texto seleccionado o usa **Editar en el lienzo**. Ctrl/⌘+Enter confirma; Escape cancela; hacer clic fuera guarda.
-- **Ajustar al ancho del sticker** extiende el cuadro de texto al 90% del ancho de la etiqueta, dejando un 5% de margen a cada lado, y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura dejando también un 5% de margen superior e inferior; reinicia la rotación. Con CSV se calcula sobre el registro visible.
+- **Ajustar al ancho del sticker** extiende el cuadro de texto al 90% del ancho de la etiqueta, dejando un 5% de margen a cada lado, y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura dejando también un 5% de margen superior e inferior; conserva la rotación y, para giros de 90°/270°, ajusta el texto al alto del sticker. Con CSV se calcula sobre el registro visible.
 - **Vista al ancho** ajusta el zoom al ancho disponible. **Ajustar a pantalla** encaja toda la etiqueta considerando tanto ancho como alto del área visible.
 - Los botones de alineación ajustan el texto dentro de su cuadro: izquierda, centro, derecha o justificado. El justificado distribuye las palabras de las líneas completas; la última línea de cada párrafo queda a la izquierda.
 - **Centrar en etiqueta** centra el cuadro completo horizontal y verticalmente.
@@ -108,3 +108,7 @@ Las divisiones interiores de una tabla seleccionada se pueden arrastrar para aju
 Haz clic en una celda de la tabla para seleccionarla y usa la misma barra del texto: tipografía, tamaño en pt, A−/A+, negrita, color, alineación horizontal, vertical y ajuste de texto al espacio de la celda. El rótulo de la barra indica la fila y columna. Doble clic permite editar el contenido directamente. Cada celda conserva su formato al guardar, redimensionar, exportar e imprimir.
 
 El botón **Toda la tabla** permite aplicar el formato a todas las celdas. Los formatos de celda que se establecen después prevalecen sobre el formato base. Al aplicar una propiedad a toda la tabla se eliminan las excepciones de esa propiedad. El ajuste de texto de una tabla calcula el tamaño para cada celda, sin cambiar las dimensiones de sus filas o columnas.
+
+## Girar texto
+
+La barra tiene botones para girar 90° a izquierda o derecha y un indicador del ángulo que restablece el giro a 0°. En un cuadro de texto se gira el cuadro; en una celda se gira únicamente su texto, manteniendo la cuadrícula. **Toda la tabla** permite girar el texto de todas las celdas. El editor de la celda y el ajuste de tamaño usan sus dimensiones giradas. El giro se conserva al guardar, exportar e imprimir.
