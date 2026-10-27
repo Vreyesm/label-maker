@@ -62,7 +62,7 @@ Abre http://localhost:8080. Verificación lógica: `node verify.cjs`.
 
 ## Datos y uso
 
-Los diseños se guardan en localStorage, por navegador y dominio. Al borrar los datos del navegador se pierden. Usa **Guardar** para descargar copias JSON. Los CSV solo permanecen en memoria y se deben volver a importar después de recargar. Las imágenes se incluyen dentro del diseño. No se envían datos a un servidor.
+Los diseños se guardan en localStorage, por navegador y dominio. Al borrar los datos del navegador se pierden. Usa **Guardar** para descargar copias JSON. Los datos CSV y la vista de trabajo se conservan localmente para restaurar la sesión. Las imágenes se incluyen dentro del diseño. No se envían datos a un servidor.
 
 La impresión requiere elegir escala 100%, papel con las dimensiones de la etiqueta, sin márgenes ni encabezados. El controlador debe admitir el formato. Comprueba una muestra antes de imprimir un lote y verifica la lectura de códigos con tu escáner.
 
@@ -76,8 +76,8 @@ Se comprueban por Node la validación EAN-13, generación Code 39, lectura CSV, 
 
 - Arrastra el cuadrado de la esquina inferior derecha del elemento seleccionado para cambiar el ancho y el alto. El texto se redistribuye sin modificar la tipografía.
 - Haz doble clic sobre el texto, pulsa Enter/F2 con el texto seleccionado o usa **Editar en el lienzo**. Ctrl/⌘+Enter confirma; Escape cancela; hacer clic fuera guarda.
-- **Ajustar al ancho del sticker** extiende el cuadro de texto al 90% del ancho de la etiqueta, dejando un 5% de margen a cada lado, y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura dejando también un 5% de margen superior e inferior; reinicia la rotación. Con CSV se calcula sobre el registro visible.
-- **Vista al ancho** solo controla el zoom del área de trabajo.
+- **Ajustar al ancho del sticker** extiende el cuadro de texto al 90% del ancho de la etiqueta, dejando un 5% de margen a cada lado, y recalcula la fuente con el contenido visible. Conserva los saltos de línea y limita la altura dejando también un 5% de margen superior e inferior; conserva la rotación y, para giros de 90°/270°, ajusta el texto al alto del sticker. Con CSV se calcula sobre el registro visible.
+- **Vista al ancho** ajusta el zoom al ancho disponible. **Ajustar a pantalla** encaja toda la etiqueta considerando tanto ancho como alto del área visible.
 - Los botones de alineación ajustan el texto dentro de su cuadro: izquierda, centro, derecha o justificado. El justificado distribuye las palabras de las líneas completas; la última línea de cada párrafo queda a la izquierda.
 - **Centrar en etiqueta** centra el cuadro completo horizontal y verticalmente.
 
@@ -94,9 +94,33 @@ En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** interc
 ## Texto y tablas
 
 - La barra sobre el lienzo permite alinear el texto arriba, al centro vertical o abajo dentro del cuadro. Esta alineación también se respeta en el SVG, al editar sobre el lienzo y al imprimir.
-- En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda del lienzo enfoca su editor en el panel.
+- En Elementos → Tabla se inserta una cuadrícula de 3 filas y 2 columnas. Cambia las filas/columnas (1 a 10), el encabezado, tamaño de fuente, alineación y contenido en el panel de propiedades. Doble clic en una celda permite escribir directamente sobre la tabla del lienzo. Tab/Mayús+Tab cambia de celda; Ctrl/⌘+Enter confirma y Escape cancela.
 - Las tablas se pueden mover, redimensionar, girar, duplicar, deshacer, guardar y exportar. Las celdas admiten campos CSV `{{campo}}` y consecutivos `{{numero}}`.
 
 ## Plantillas básicas
 
 En Plantillas → Básicas puedes elegir **Solo texto** (100 × 60 mm) o **Texto vertical** (60 × 100 mm, con el texto girado 90°). Ambas contienen un único cuadro de texto centrado, editable, con margen y sin códigos ni imágenes. Las medidas y el contenido se pueden cambiar como en los demás diseños.
+
+Las divisiones interiores de una tabla seleccionada se pueden arrastrar para ajustar el ancho de columnas y el alto de filas. Los tamaños relativos se conservan al guardar, redimensionar el cuadro completo, girar, exportar e imprimir. La cuadrícula visible dentro del sticker representa pasos de 5 mm y es únicamente una guía de edición. El color predeterminado de texto y bordes es negro; los diseños con el antiguo tono verde predeterminado se convierten a negro al abrirse.
+
+## Formato por celda
+
+Haz clic en una celda de la tabla para seleccionarla y usa la misma barra del texto: tipografía, tamaño en pt, A−/A+, negrita, color, alineación horizontal, vertical y ajuste de texto al espacio de la celda. El rótulo de la barra indica la fila y columna. Doble clic permite editar el contenido directamente. Cada celda conserva su formato al guardar, redimensionar, exportar e imprimir.
+
+El botón **Toda la tabla** permite aplicar el formato a todas las celdas. Los formatos de celda que se establecen después prevalecen sobre el formato base. Al aplicar una propiedad a toda la tabla se eliminan las excepciones de esa propiedad. El ajuste de texto de una tabla calcula el tamaño para cada celda, sin cambiar las dimensiones de sus filas o columnas.
+
+## Girar texto
+
+La barra tiene botones para girar 90° a izquierda o derecha y un indicador del ángulo que restablece el giro a 0°. En un cuadro de texto se gira el cuadro; en una celda se gira únicamente su texto, manteniendo la cuadrícula. **Toda la tabla** permite girar el texto de todas las celdas. El editor de la celda y el ajuste de tamaño usan sus dimensiones giradas. El giro se conserva al guardar, exportar e imprimir.
+
+## Elementos fuera de la etiqueta
+
+El área de edición muestra el contenido, la selección y los tiradores que sobresalen del sticker. El espacio de trabajo incluye los límites de los elementos girados, con margen para recuperar sus controles. Se pueden mover libremente, incluso con coordenadas negativas, para corregir su posición. **Ajustar a pantalla** incluye esos elementos en el encaje. El borde blanco sigue indicando el área imprimible: SVG e impresión recortan al tamaño físico de la etiqueta.
+
+## Diseños guardados y sesión
+
+- En **Mis diseños**, edita el nombre directamente en su campo. El nombre de la cabecera también actualiza el diseño guardado que está abierto.
+- Los diseños guardados aparecen en **Plantillas → Mis diseños**, con su nombre y miniatura, y se incluyen en la búsqueda de plantillas.
+- Una vez guardado un diseño, sus cambios se actualizan en esa misma entrada. **Guardar como copia** crea una entrada independiente.
+- Al volver a abrir la página en el mismo navegador y dominio, se restaura el diseño de trabajo y su última vista: pestaña, filtro, zoom/encaje, cuadrícula, desplazamiento, selección y datos CSV. Los cambios de edición en curso se confirman al salir de la página.
+- El guardado es local al navegador. Para mover diseños entre dispositivos o dominios, descarga e importa el archivo JSON. Al importar un archivo se abre como una copia de trabajo independiente.

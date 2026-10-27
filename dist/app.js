@@ -1,8 +1,9 @@
 'use strict';
 const $=s=>document.querySelector(s),clone=x=>JSON.parse(JSON.stringify(x));
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-let fitWidth=false, activeEditor=null;
-let seq=0;const el=(type,x,y,w,h,text='',extra={})=>({id:++seq,type,x,y,w,h,text,size:3,color:'#182c21',bold:false,align:'left',rotation:0,...extra});
+const CELL_FORMAT_KEYS=['size','bold','align','valign','font','color','textRotation'];
+let fitWidth=false, fitScreen=false, activeEditor=null, activeCell=null;
+let seq=0;const el=(type,x,y,w,h,text='',extra={})=>({id:++seq,type,x,y,w,h,text,size:3,color:'#000000',bold:false,align:'left',rotation:0,...extra});
 const templates=[
 {id:'basic-text',name:'Solo texto',category:'Básicas',w:100,h:60,desc:'Un texto centrado, sin otros elementos',elements:()=>[el('text',5,6,90,48,'TU TEXTO',{size:12,bold:true,align:'center',valign:'middle'})]},
 {id:'basic-vertical',name:'Texto vertical',category:'Básicas',w:60,h:100,desc:'Texto girado 90° en una etiqueta vertical',elements:()=>[el('text',-15,26,90,48,'TU TEXTO',{size:12,bold:true,align:'center',valign:'middle',rotation:90})]},
@@ -14,9 +15,58 @@ const templates=[
 let state={name:'Etiqueta de producto',w:100,h:60,bg:'#ffffff',template:'product',elements:templates.find(t=>t.id==='product').elements()},selected=null,tab='templates',filter='Todas',query='',zoom=1,history=[],future=[],rows=[],csvFields=[],record=0;
 try{const saved=JSON.parse(localStorage.getItem('labela-current'));if(saved)state=validate(saved)}catch{}seq=Math.max(0,...state.elements.map(e=>e.id));
 function toast(s){$('#toast').textContent=s;$('#toast').style.display='block';clearTimeout(toast.timer);toast.timer=setTimeout(()=>$('#toast').style.display='none',3200)}
-function persist(){try{localStorage.setItem('labela-current',JSON.stringify(state));$('#saved').textContent='● Guardado en este navegador'}catch{$('#saved').textContent='Sin espacio local: descarga tu diseño'}}
+let viewSaveTimer=null,restoringView=false;
+function saveStatus(message){const node=$('#saved');if(node)node.textContent=message}
+function viewSnapshot(){
+ const position=selector=>{const node=$(selector);return {top:node?.scrollTop||0,left:node?.scrollLeft||0}};
+ return {tab,filter,query,zoom,fitWidth,fitScreen,grid:$('#grid')?.checked??true,selected,activeCell,scroll:{canvas:position('#canvas-area'),left:position('.left'),right:position('.right')},copies:+($('#copies')?.value||1),rotateDesign:$('#rotate-design')?.checked??true,csv:{rows,fields:csvFields,record}};
+}
+function persistView(){
+ if(restoringView)return true;
+ try{localStorage.setItem('labela-view',JSON.stringify(viewSnapshot()));return true}catch{saveStatus('No se pudo guardar la vista: almacenamiento lleno');return false}
+}
+function scheduleViewSave(){if(restoringView)return;clearTimeout(viewSaveTimer);viewSaveTimer=setTimeout(persistView,200)}
+function persist(){
+ try{
+  const library=state.savedId?getLibrary():null,index=library?library.findIndex(d=>d.savedId===state.savedId):-1;
+  if(state.savedId&&index<0)delete state.savedId;
+  localStorage.setItem('labela-current',JSON.stringify(state));
+  if(index>=0){library[index]=clone(state);writeLibrary(library);const preview=$(`[data-saved-template="${state.savedId}"] .preview`);if(preview)preview.innerHTML=svgDoc(state,{},0)}
+  saveStatus('● Guardado en este navegador');persistView();
+ }catch{saveStatus('No se pudo guardar: descarga una copia del diseño')}
+}
+function safeView(raw){
+ const value=raw&&typeof raw==='object'?raw:{},validTab=['templates','elements','data','library'].includes(value.tab)?value.tab:'templates',validFilter=['Todas','Básicas','Producto','Logística','Mis diseños'].includes(value.filter)?value.filter:'Todas';
+ const pos=value=>({top:Number.isFinite(value?.top)&&value.top>=0?value.top:0,left:Number.isFinite(value?.left)&&value.left>=0?value.left:0});
+ const csv=value.csv,validCSV=csv&&Array.isArray(csv.rows)&&csv.rows.length<=500&&csv.rows.every(row=>row&&typeof row==='object'&&!Array.isArray(row)&&Object.values(row).every(v=>typeof v==='string'))&&Array.isArray(csv.fields)&&csv.fields.every(f=>typeof f==='string');
+ return {tab:validTab,filter:validFilter,query:typeof value.query==='string'?value.query.slice(0,100):'',zoom:Number.isFinite(value.zoom)&&value.zoom>=.3&&value.zoom<=2?value.zoom:1,fitWidth:!!value.fitWidth&&!value.fitScreen,fitScreen:!!value.fitScreen,grid:typeof value.grid==='boolean'?value.grid:true,selected:Number.isInteger(value.selected)?value.selected:null,activeCell:value.activeCell,scroll:{canvas:pos(value.scroll?.canvas),left:pos(value.scroll?.left),right:pos(value.scroll?.right)},copies:Number.isInteger(value.copies)&&value.copies>=1&&value.copies<=500?value.copies:1,rotateDesign:typeof value.rotateDesign==='boolean'?value.rotateDesign:true,csv:validCSV?{rows:csv.rows,fields:csv.fields,record:Math.max(0,Math.min(csv.rows.length-1,Number.isInteger(csv.record)?csv.record:0))}:{rows:[],fields:[],record:0}};
+}
+function restoreWorkspace(){
+ let raw={};try{raw=JSON.parse(localStorage.getItem('labela-view'))||{}}catch{}
+ const view=safeView(raw);tab=view.tab;filter=view.filter;query=view.query;zoom=view.zoom;fitWidth=view.fitWidth;fitScreen=view.fitScreen;
+ selected=state.elements.some(e=>e.id===view.selected)?view.selected:null;activeCell=null;
+ const selectedElement=state.elements.find(e=>e.id===selected),cell=view.activeCell;
+ if(selectedElement?.type==='table'&&cell&&cell.id===selected&&Number.isInteger(cell.row)&&Number.isInteger(cell.col)&&cell.row>=0&&cell.row<selectedElement.rows&&cell.col>=0&&cell.col<selectedElement.cols)activeCell={id:selected,row:cell.row,col:cell.col};
+ rows=view.csv.rows;csvFields=view.csv.fields;record=view.csv.record;
+ if($('#grid'))$('#grid').checked=view.grid;if($('#copies'))$('#copies').value=view.copies;if($('#rotate-design'))$('#rotate-design').checked=view.rotateDesign;
+ if(!state.savedId){const fingerprint=doc=>JSON.stringify([doc.name,doc.w,doc.h,doc.bg,doc.elements]),matches=getLibrary().filter(doc=>fingerprint(doc)===fingerprint(state));if(matches.length===1)state.savedId=matches[0].savedId}
+ return view;
+}
+function restoreScroll(view){for(const [name,selector] of [['canvas','#canvas-area'],['left','.left'],['right','.right']]){const node=$(selector);if(node){node.scrollTop=view.scroll[name].top;node.scrollLeft=view.scroll[name].left}}}
+function setTab(next){finishInlineEdit();tab=next;renderLeft();persistView()}
+function flushWorkspace(){
+ finishInlineEdit(true,false);
+ const input=document.activeElement;
+ if(input?.id==='docname'&&input.value.trim())state.name=input.value.trim().slice(0,100);
+ else if(input?.matches?.('[data-prop],[data-table-cell],[data-design-name]'))input.dispatchEvent(new Event('change',{bubbles:true}));
+ persist();
+}
 function checkpoint(){history.push(clone(state));if(history.length>60)history.shift();future=[]}
-function change(fn){checkpoint();fn();render();persist()}
+function change(fn){finishInlineEdit(true,false);checkpoint();fn();render();persist()}
+function stepHistory(direction){
+ finishInlineEdit(true,false);const source=direction==='undo'?history:future,target=direction==='undo'?future:history;
+ if(!source.length)return;target.push(clone(state));state=source.pop();selected=null;activeCell=null;render();renderLeft();persist();
+}
 function val(text,row=rows[record]||{},index=record){return String(text).replace(/\{\{([^}]+)\}\}/g,(_,key)=>key.trim()==='numero'?String(index+1).padStart(4,'0'):row[key.trim()]??'{{'+key+'}}')}
 // EAN-13 includes a computed check digit; Code 39 supports uppercase identifiers.
 function barcode(e,text){let bits='',human=text;const L=['0001101','0011001','0010011','0111101','0100011','0110001','0101111','0111011','0110111','0001011'],G=['0100111','0110011','0011011','0100001','0011101','0111001','0000101','0010001','0001001','0010111'],P=['LLLLLL','LLGLGG','LLGGLG','LLGGGL','LGLLGG','LGGLLG','LGGGLL','LGLGLG','LGLGGL','LGGLGL'];
@@ -88,19 +138,105 @@ function textVerticalOffset(e,text){
  const free=Math.max(0,e.h-textLines(e,text).length*e.size*1.2);
  return e.valign==='middle'?free/2:e.valign==='bottom'?free:0;
 }
+function selectedTableCell(e){return activeCell&&activeCell.id===e.id&&activeCell.row>=0&&activeCell.row<e.rows&&activeCell.col>=0&&activeCell.col<e.cols?activeCell:null}
+function normalizedAngle(value=0){return ((value%360)+360)%360}
+function cellTextStyle(e,row,col){
+ const box=tableCellBox(e,row,col),style={...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:!!(e.bold||(e.header&&row===0)),align:e.align||'left',valign:e.valign||'middle',textRotation:e.textRotation||0,...(e.cellFormats?.[row]?.[col]||{})};
+ if(normalizedAngle(style.textRotation)%180===90)[style.w,style.h]=[style.h,style.w];
+ return style;
+}
+function rotateTextTarget(target,delta,reset=false){
+ if(target.e.type==='text')target.e.rotation=reset?0:normalizedAngle((target.e.rotation||0)+delta);
+ else applyTextFormat(target,'textRotation',reset?0:normalizedAngle((target.style.textRotation||0)+delta));
+}
+function setCellFormat(e,cell,key,value){
+ if(!CELL_FORMAT_KEYS.includes(key))throw Error('Formato de celda no válido.');
+ if(!e.cellFormats)e.cellFormats=Array.from({length:e.rows},()=>Array.from({length:e.cols},()=>({})));
+ e.cellFormats[cell.row][cell.col][key]=value;
+}
+function formattingTarget(){
+ const e=state.elements.find(e=>e.id===selected);if(!e||!['text','table'].includes(e.type))return null;
+ const cell=e.type==='table'?selectedTableCell(e):null;
+ return {e,cell,style:cell?cellTextStyle(e,cell.row,cell.col):e};
+}
+function applyTextFormat(target,key,value){
+ if(target.cell)setCellFormat(target.e,target.cell,key,value);
+ else{
+  if(key==='size'&&target.e.type==='text')setTextSize(target.e,value/MM_PER_PT);else target.e[key]=value;
+  if(target.e.type==='table'){if(key==='bold'){for(let r=0;r<target.e.rows;r++)for(let c=0;c<target.e.cols;c++)setCellFormat(target.e,{row:r,col:c},key,value)}else if(target.e.cellFormats)target.e.cellFormats.forEach(row=>row.forEach(format=>delete format[key]))}
+ }
+}
+function fitCellText(e,cell){
+ const style=cellTextStyle(e,cell.row,cell.col),lines=val(e.cells[cell.row][cell.col]).split('\n'),width=Math.max(...lines.map(line=>measureText(line,style)));
+ if(!width)return;
+ setCellFormat(e,cell,'size',Math.min(style.size*style.w/width,style.h/(1.2*lines.length)));
+}
+function cellSelectionMarkup(e){
+ const cell=selectedTableCell(e);if(!cell||selected!==e.id)return '';const box=tableCellBox(e,cell.row,cell.col);
+ return `<span class="table-cell-selection" style="left:${box.x/e.w*100}%;top:${box.y/e.h*100}%;width:${box.w/e.w*100}%;height:${box.h/e.h*100}%" aria-hidden="true"></span>`;
+}
+function cellFromEvent(e,node,event){
+ const value=event.target.closest('[data-cell]')?.dataset.cell;if(value){const [row,col]=value.split(',').map(Number);return {row,col}}
+ const rect=node.getBoundingClientRect(),k=scale(),point=localDelta((event.clientX-(rect.left+rect.width/2))/k,(event.clientY-(rect.top+rect.height/2))/k,e.rotation||0);
+ return tableCellAt(e,point.x+e.w/2,point.y+e.h/2);
+}
+function validateCellFormats(e){
+ if(e.cellFormats===undefined)return;
+ if(!Array.isArray(e.cellFormats)||e.cellFormats.length!==e.rows||!e.cellFormats.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(format=>format&&typeof format==='object'&&!Array.isArray(format)&&Object.entries(format).every(([key,value])=>{
+  if(!CELL_FORMAT_KEYS.includes(key))return false;
+  if(key==='textRotation')return [0,90,180,270].includes(value);
+  if(key==='size')return Number.isFinite(value)&&value>0&&value<=1000;
+  if(key==='bold')return typeof value==='boolean';
+  if(key==='align')return ['left','center','right','justify'].includes(value);
+  if(key==='valign')return ['top','middle','bottom'].includes(value);
+  if(key==='font')return ['Arial','Georgia','Courier New'].includes(value);
+  return typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value);
+ }))))throw Error('Formatos de celda inválidos.');
+ e.cellFormats.forEach(row=>row.forEach(format=>{if(format.color?.toLowerCase()==='#182c21')format.color='#000000'}));
+}
+function tableTracks(e){
+ const tracks=(weights,count,total)=>{const values=Array.isArray(weights)&&weights.length===count?weights:Array(count).fill(1),sum=values.reduce((a,b)=>a+b,0);return values.map(v=>v*total/sum)};
+ return {cols:tracks(e.colSizes,e.cols,e.w),rows:tracks(e.rowSizes,e.rows,e.h)};
+}
+function tableCellBox(e,row,col){
+ const tracks=tableTracks(e),w=tracks.cols[col],h=tracks.rows[row];
+ return {x:tracks.cols.slice(0,col).reduce((a,b)=>a+b,0),y:tracks.rows.slice(0,row).reduce((a,b)=>a+b,0),w,h,pad:Math.min(1,w/8,h/8)};
+}
 function resizeTable(e,rowCount,colCount){
  if(!Number.isInteger(rowCount)||!Number.isInteger(colCount)||rowCount<1||rowCount>10||colCount<1||colCount>10)throw Error('La tabla admite entre 1 y 10 filas y columnas.');
+ for(const [key,count] of [['rowSizes',rowCount],['colSizes',colCount]])if(e[key]){const previous=e[key],average=previous.reduce((a,b)=>a+b,0)/previous.length;e[key]=Array.from({length:count},(_,i)=>previous[i]??average)}
+ if(e.cellFormats)e.cellFormats=Array.from({length:rowCount},(_,r)=>Array.from({length:colCount},(_,c)=>({...e.cellFormats?.[r]?.[c]})));
  e.cells=Array.from({length:rowCount},(_,r)=>Array.from({length:colCount},(_,c)=>e.cells?.[r]?.[c]??''));e.rows=rowCount;e.cols=colCount;
 }
+function resizeTableTrack(e,axis,index,delta,original){
+ const values=original.slice(),total=values[index]+values[index+1],minimum=Math.min(1,total/4);
+ const first=Math.max(minimum,Math.min(total-minimum,original[index]+delta));
+ values[index]=first;values[index+1]=total-first;e[axis==='col'?'colSizes':'rowSizes']=values;
+}
 function tableSVG(e,row,index){
- const cw=e.w/e.cols,ch=e.h/e.rows,pad=Math.min(1,cw/8,ch/8);
  return e.cells.map((cells,r)=>cells.map((content,c)=>{
-  const cell={...e,w:cw-2*pad,h:ch-2*pad,bold:e.bold||(e.header&&r===0),valign:e.valign||'middle'};
-  return `<g data-cell="${r},${c}" transform="translate(${c*cw} ${r*ch})"><rect width="${cw}" height="${ch}" fill="${e.header&&r===0?'#eef2e9':'#ffffff'}" stroke="${esc(e.color)}" stroke-width=".25"/><g transform="translate(${pad} ${pad})">${textSVG(cell,val(content,row,index))}</g></g>`;
+  const box=tableCellBox(e,r,c),cell=cellTextStyle(e,r,c);
+  return `<g data-cell="${r},${c}" transform="translate(${box.x} ${box.y})"><rect width="${box.w}" height="${box.h}" fill="${e.header&&r===0?'#f1f1f1':'#ffffff'}" stroke="${esc(e.color)}" stroke-width=".25"/><g transform="translate(${box.w/2} ${box.h/2}) rotate(${cell.textRotation}) translate(${-cell.w/2} ${-cell.h/2})">${textSVG(cell,val(content,row,index))}</g></g>`;
  }).join('')).join('');
 }
+function tableHandles(e){
+ const tracks=tableTracks(e);let x=0,y=0;
+ return tracks.cols.slice(0,-1).map((w,i)=>{x+=w;return `<span class="table-col-grip" data-table-axis="col" data-track="${i}" style="left:${x/e.w*100}%" title="Arrastra para ajustar las columnas" aria-label="Ajustar ancho de columnas ${i+1} y ${i+2}"></span>`}).join('')+tracks.rows.slice(0,-1).map((h,i)=>{y+=h;return `<span class="table-row-grip" data-table-axis="row" data-track="${i}" style="top:${y/e.h*100}%" title="Arrastra para ajustar las filas" aria-label="Ajustar alto de filas ${i+1} y ${i+2}"></span>`}).join('');
+}
+function tableCellAt(e,x,y){
+ const tracks=tableTracks(e),index=(values,position)=>{let edge=0;for(let i=0;i<values.length;i++){edge+=values[i];if(position<edge)return i}return values.length-1};
+ return {row:index(tracks.rows,Math.max(0,y)),col:index(tracks.cols,Math.max(0,x))};
+}
+function localDelta(dx,dy,angle){const r=angle*Math.PI/180;return {x:dx*Math.cos(r)+dy*Math.sin(r),y:-dx*Math.sin(r)+dy*Math.cos(r)}}
+function beginTableTrackResize(event,node,e,axis,index){
+ const original=tableTracks(e)[axis==='col'?'cols':'rows'],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
+ node.setPointerCapture(event.pointerId);
+ node.onpointermove=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(!moved&&Math.hypot(dx,dy)<3)return;if(!moved){checkpoint();moved=true}const delta=localDelta(dx/k,dy/k,e.rotation||0);resizeTableTrack(e,axis,index,axis==='col'?delta.x:delta.y,original);node.innerHTML=elementContent(e)};
+ const finish=()=>{node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}};
+ node.onpointerup=finish;node.onpointercancel=finish;
+}
 function tableProperties(e){
- return `<div class="table-properties"><div class="two"><label>Filas<input data-table-dimension="rows" type="number" min="1" max="10" value="${e.rows}"></label><label>Columnas<input data-table-dimension="cols" type="number" min="1" max="10" value="${e.cols}"></label></div><label class="field"><input type="checkbox" data-prop="header" ${e.header?'checked':''}> Primera fila como encabezado</label><label class="field">Tamaño del texto (mm)<input type="number" data-prop="size" min=".5" step=".5" value="${e.size}"></label><div class="two"><label>Alineación<select data-prop="align">${['left','center','right','justify'].map((a,i)=>`<option value="${a}" ${(e.align||'left')===a?'selected':''}>${['Izquierda','Centro','Derecha','Justificado'][i]}</option>`).join('')}</select></label><label>Vertical<select data-prop="valign">${['top','middle','bottom'].map((a,i)=>`<option value="${a}" ${(e.valign||'middle')===a?'selected':''}>${['Arriba','Centro','Abajo'][i]}</option>`).join('')}</select></label></div><label>Contenido de las celdas</label><div class="table-cell-scroll"><div class="table-cell-grid" style="grid-template-columns:repeat(${e.cols},minmax(88px,1fr))">${e.cells.map((cells,r)=>cells.map((content,c)=>`<textarea data-table-cell="${r},${c}" aria-label="Fila ${r+1}, columna ${c+1}" placeholder="Fila ${r+1}, col. ${c+1}" rows="2">${esc(content)}</textarea>`).join('')).join('')}</div></div><p class="small">Puedes usar campos CSV como {{producto}} dentro de las celdas. Doble clic en una celda del lienzo para editarla aquí.</p></div>`;
+ return `<div class="table-properties"><div class="two"><label>Filas<input data-table-dimension="rows" type="number" min="1" max="10" value="${e.rows}"></label><label>Columnas<input data-table-dimension="cols" type="number" min="1" max="10" value="${e.cols}"></label></div><label class="field"><input type="checkbox" data-prop="header" ${e.header?'checked':''}> Primera fila como encabezado</label><label class="field">Tamaño del texto (mm)<input type="number" data-prop="size" min=".5" step=".5" value="${e.size}"></label><div class="two"><label>Alineación<select data-prop="align">${['left','center','right','justify'].map((a,i)=>`<option value="${a}" ${(e.align||'left')===a?'selected':''}>${['Izquierda','Centro','Derecha','Justificado'][i]}</option>`).join('')}</select></label><label>Vertical<select data-prop="valign">${['top','middle','bottom'].map((a,i)=>`<option value="${a}" ${(e.valign||'middle')===a?'selected':''}>${['Arriba','Centro','Abajo'][i]}</option>`).join('')}</select></label></div><label>Contenido de las celdas</label><div class="table-cell-scroll"><div class="table-cell-grid" style="grid-template-columns:repeat(${e.cols},minmax(88px,1fr))">${e.cells.map((cells,r)=>cells.map((content,c)=>`<textarea data-table-cell="${r},${c}" aria-label="Fila ${r+1}, columna ${c+1}" placeholder="Fila ${r+1}, col. ${c+1}" rows="2">${esc(content)}</textarea>`).join('')).join('')}</div></div><p class="small">Puedes usar campos CSV como {{producto}} dentro de las celdas. Doble clic en una celda para editarla en el lienzo. Arrastra las líneas interiores para cambiar el ancho de las columnas o el alto de las filas.</p></div>`;
 }
 function wireTableProperties(e){
  const root=$('#properties');
@@ -119,15 +255,44 @@ function textSVG(e,text){
  }).join('')}</g></svg>`;
 }
 function svgContent(e,row,index){if(e.type==='table')return tableSVG(e,row,index);const text=val(e.text,row,index);if(e.type==='barcode'){let b=barcode(e,text);return b.error?`<text x="0" y="3" font-size="2" fill="#b34c3b">${esc(b.error)}</text>`:`<svg width="${e.w}" height="${e.h}" viewBox="0 0 ${e.w} ${e.h}">${b.svg.replace('<svg ',`<svg width="${e.w}" height="${e.h}" `)}</svg>`}if(e.type==='image')return `<image width="${e.w}" height="${e.h}" href="${esc(e.src)}" preserveAspectRatio="xMidYMid meet"/>`;if(e.type==='rect')return `<rect width="${e.w}" height="${e.h}" fill="${e.fill?esc(e.color):'none'}" stroke="${esc(e.color)}" stroke-width=".35"/>`;if(e.type==='line')return `<rect width="${e.w}" height="${e.h}" fill="${esc(e.color)}"/>`;return textSVG(e,text)}
-function svgDoc(doc=state,row=rows[record]||{},index=record){return `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.w}mm" height="${doc.h}mm" viewBox="0 0 ${doc.w} ${doc.h}"><rect width="100%" height="100%" fill="${esc(doc.bg)}"/>${doc.elements.map(e=>`<g transform="translate(${e.x} ${e.y}) rotate(${e.rotation||0} ${e.w/2} ${e.h/2})">${svgContent(e,row,index)}</g>`).join('')}</svg>`}
-function scale(){const available=Math.max(.2,($('#canvas-area').clientWidth-90)/state.w);return (fitWidth?available:Math.min(5.1,available,430/state.h))*zoom}
-function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg><span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
+function svgDoc(doc=state,row=rows[record]||{},index=record){return `<svg xmlns="http://www.w3.org/2000/svg" width="${doc.w}mm" height="${doc.h}mm" viewBox="0 0 ${doc.w} ${doc.h}" overflow="hidden"><rect width="100%" height="100%" fill="${esc(doc.bg)}"/>${doc.elements.map(e=>`<g transform="translate(${e.x} ${e.y}) rotate(${e.rotation||0} ${e.w/2} ${e.h/2})">${svgContent(e,row,index)}</g>`).join('')}</svg>`}
+function rotatedElementBounds(e){
+ const radians=(e.rotation||0)*Math.PI/180,c=Math.abs(Math.cos(radians)),s=Math.abs(Math.sin(radians)),w=e.w*c+e.h*s,h=e.w*s+e.h*c,cx=e.x+e.w/2,cy=e.y+e.h/2;
+ return {left:cx-w/2,top:cy-h/2,right:cx+w/2,bottom:cy+h/2};
+}
+function editingBounds(doc){
+ let left=0,top=0,right=doc.w,bottom=doc.h;
+ for(const e of doc.elements){const b=rotatedElementBounds(e);left=Math.min(left,b.left);top=Math.min(top,b.top);right=Math.max(right,b.right);bottom=Math.max(bottom,b.bottom)}
+ return {left,top,right,bottom,w:right-left,h:bottom-top};
+}
+function canvasStage(doc,k){
+ const bounds=editingBounds(doc),padding=10;
+ return {width:bounds.w*k+2*padding,height:bounds.h*k+2*padding,left:-bounds.left*k+padding,top:-bounds.top*k+padding};
+}
+function updateCanvasStage(k){
+ const stage=canvasStage(state,k),wrap=$('#canvas-stage'),board=$('#board'),ruler=$('#top-ruler'),dimension=$('#dimension');
+ wrap.style.width=stage.width+'px';wrap.style.height=stage.height+'px';board.style.left=stage.left+'px';board.style.top=stage.top+'px';
+ ruler.style.left=stage.left+'px';ruler.style.width=state.w*k+'px';ruler.style.right='auto';ruler.style.top='-20px';
+ dimension.style.left=stage.left+'px';dimension.style.width=state.w*k+'px';dimension.style.top=(stage.height+8)+'px';dimension.style.bottom='auto';
+}
+function viewBounds(){
+ const area=$('#canvas-area'),style=typeof getComputedStyle==='function'?getComputedStyle(area):null;
+ const padding=(key,fallback)=>style?parseFloat(style[key])||0:fallback;
+ const width=area.clientWidth-padding('paddingLeft',35)-padding('paddingRight',35)-20;
+ const height=(area.clientHeight??520)-padding('paddingTop',28)-padding('paddingBottom',24)-($('#canvas-caption')?.offsetHeight??12)-($('#canvas-hint')?.offsetHeight??24)-92;
+ return {width:Math.max(1,width),height:Math.max(1,height)};
+}
+function fittedScale(doc,bounds,mode='screen'){const width=bounds.width/doc.w;return Math.max(.001,mode==='width'?width:Math.min(width,bounds.height/doc.h))}
+function scale(){const bounds=viewBounds(),extent=editingBounds(state);return (fitWidth?fittedScale(state,bounds,'width'):fitScreen?fittedScale(extent,bounds):Math.min(5.1,fittedScale(state,bounds)))*zoom}
+function applyGrid(visible,k=scale()){$('#board').classList.toggle('show-grid',!!visible);$('#board').style.setProperty('--grid-step',`${5*k}px`)}
+function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg>${e.type==='table'?tableHandles(e)+cellSelectionMarkup(e):''}<span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
 function fitTextToSticker(e,doc,row={},index=0){
  const lines=val(e.text,row,index).split('\n'),longest=Math.max(...lines.map(t=>measureText(t,e)));
  if(!longest)return null;
- const margin=doc.w*.05,verticalMargin=doc.h*.05,w=doc.w-2*margin;
- const size=Math.min(e.size*w/longest,(doc.h-2*verticalMargin)/(1.2*lines.length)),h=size*1.2*lines.length;
- return {x:margin,w,size,h,y:Math.max(verticalMargin,Math.min(e.y,doc.h-verticalMargin-h)),rotation:0};
+ const angle=normalizedAngle(e.rotation||0),quarter=angle===90||angle===270;
+ const availableWidth=(quarter?doc.h:doc.w)*.9,availableHeight=(quarter?doc.w:doc.h)*.9;
+ const size=Math.min(e.size*availableWidth/longest,availableHeight/(1.2*lines.length)),h=size*1.2*lines.length,w=availableWidth;
+ return {x:(doc.w-w)/2,w,size,h,y:quarter?(doc.h-h)/2:Math.max(doc.h*.05,Math.min(e.y,doc.h*.95-h)),rotation:angle};
 }
 function orientLabel(doc,direction,rotateContent=true){
  if(!['portrait','landscape'].includes(direction))throw Error('Orientación no válida.');
@@ -148,28 +313,78 @@ function resizedBounds(start,dx,dy,angle=0){
  return {w,h,x:start.x+(c*dw-sn*dh-dw)/2,y:start.y+(sn*dw+c*dh-dh)/2};
 }
 function finishInlineEdit(commit=true,redraw=true){
- if(!activeEditor)return;const {input,e,original}=activeEditor;activeEditor=null;
+ if(!activeEditor)return;const {input,e,original,cell}=activeEditor;activeEditor=null;
  input.onblur=null;const value=input.value;input.remove();
- if(commit&&value!==original){checkpoint();e.text=value;persist()}
- if(redraw)render();
+ if(commit&&value!==original){checkpoint();if(cell)e.cells[cell.row][cell.col]=value;else e.text=value;persist()}
+ if(redraw)render();else{const node=$(`[data-id="${e.id}"]`);if(node){node.classList.remove('editing','editing-cell');node.innerHTML=elementContent(e)}}
 }
-function startInlineEdit(e,initial){
- if(e.type!=='text')return;finishInlineEdit();selected=e.id;render();
- const node=$(`[data-id="${e.id}"]`),k=scale(),input=document.createElement('textarea');
- input.className='inline-text';input.setAttribute('aria-label','Editar texto en el lienzo');input.value=initial===undefined?e.text:initial;
- input.style.cssText=`font-family:${e.font||'Arial'};font-size:${e.size*k}px;font-weight:${e.bold?700:400};line-height:1.2;color:${e.color};text-align:${e.align||'left'}`;
- node.classList.add('editing');node.append(input);activeEditor={input,e,original:e.text};
+function startInlineEdit(e,initial,cell=null){
+ if(e.type!=='text'&&!(e.type==='table'&&cell))return;finishInlineEdit();selected=e.id;activeCell=cell?{id:e.id,...cell}:null;render();
+ const node=$(`[data-id="${e.id}"]`),k=scale(),input=document.createElement('textarea'),box=cell?tableCellBox(e,cell.row,cell.col):null;
+ const style=cell?cellTextStyle(e,cell.row,cell.col):e;
+ const original=cell?e.cells[cell.row][cell.col]:e.text;
+ input.className=cell?'inline-text inline-cell':'inline-text';input.setAttribute('aria-label',cell?`Editar fila ${cell.row+1}, columna ${cell.col+1} en el lienzo`:'Editar texto en el lienzo');input.value=initial===undefined?original:initial;
+ input.style.cssText=`font-family:${style.font||'Arial'};font-size:${style.size*k}px;font-weight:${style.bold?700:400};line-height:1.2;color:${style.color};text-align:${style.align||'left'}`;
+ if(box){input.style.inset='auto';input.style.left=(box.x+box.w/2-style.w/2)*k+'px';input.style.top=(box.y+box.h/2-style.h/2)*k+'px';input.style.transform=`rotate(${style.textRotation}deg)`;input.style.transformOrigin='center';input.style.width=style.w*k+'px';input.style.height=style.h*k+'px'}
+ node.classList.add(cell?'editing-cell':'editing');node.append(input);activeEditor={input,e,original,cell};
  input.onpointerdown=ev=>ev.stopPropagation();input.ondblclick=ev=>ev.stopPropagation();
- input.onkeydown=ev=>{ev.stopPropagation();if(ev.key==='Escape'){ev.preventDefault();finishInlineEdit(false)}else if(ev.key==='Enter'&&(ev.ctrlKey||ev.metaKey)){ev.preventDefault();finishInlineEdit()}};
- input.oninput=()=>input.style.paddingTop=textVerticalOffset(e,input.value)*k+'px';input.oninput();input.onblur=()=>finishInlineEdit();input.focus();if(initial===undefined)input.select();else input.setSelectionRange(input.value.length,input.value.length);
+ input.onkeydown=ev=>{
+  ev.stopPropagation();if(ev.key==='Escape'){ev.preventDefault();finishInlineEdit(false)}
+  else if(ev.key==='Enter'&&(ev.ctrlKey||ev.metaKey)){ev.preventDefault();finishInlineEdit()}
+  else if(cell&&ev.key==='Tab'){ev.preventDefault();const total=e.rows*e.cols,next=(cell.row*e.cols+cell.col+(ev.shiftKey?-1:1)+total)%total;finishInlineEdit();startInlineEdit(e,undefined,{row:Math.floor(next/e.cols),col:next%e.cols})}
+ };
+ input.oninput=()=>input.style.paddingTop=textVerticalOffset(style,input.value)*k+'px';input.oninput();input.onblur=()=>finishInlineEdit();input.focus();if(initial===undefined)input.select();else input.setSelectionRange(input.value.length,input.value.length);
 }
-function render(){finishInlineEdit(true,false);let k=scale();$('#board').style.width=state.w*k+'px';$('#board').style.height=state.h*k+'px';$('#board').style.background=state.bg;$('#board').innerHTML=state.elements.map(e=>`<div class="element ${e.id===selected?'selected':''}" data-id="${e.id}" style="left:${e.x*k}px;top:${e.y*k}px;width:${e.w*k}px;height:${e.h*k}px;transform:rotate(${e.rotation||0}deg)">${elementContent(e)}</div>`).join('');$('#dimension').textContent=`${state.w} × ${state.h} mm`;$('#canvas-title').textContent=state.name.toUpperCase();$('#top-ruler').innerHTML=Array.from({length:11},(_,i)=>`<span>${+(state.w*i/10).toFixed(1)}</span>`).join('');$('#element-count').textContent=state.elements.length+' elementos';document.querySelectorAll('[data-orientation]').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.orientation==='portrait'?state.h>state.w:state.w>=state.h));button.disabled=state.w===state.h});$('#width').value=state.w;$('#height').value=state.h;$('#background').value=state.bg;$('#bgcode').textContent=state.bg.toUpperCase();$('#docname').value=state.name;$('#size').value=[...$('#size').options].some(o=>o.value===state.w+','+state.h)?state.w+','+state.h:'custom';$('#zoomval').textContent=fitWidth?'Ancho':Math.round(zoom*100)+'%';$('#fitwidth').setAttribute('aria-pressed',String(fitWidth));$('#canvas-area').classList.toggle('fit-width',fitWidth);$('#undo').disabled=!history.length;$('#redo').disabled=!future.length;renderProperties()}
-function renderLeft(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));const root=$('#left-content');if(tab==='templates'){root.innerHTML=`<h2>Un buen comienzo.</h2><p class="subtitle">Elige una plantilla y hazla tuya.</p><div class="search"><input id="search" placeholder="Buscar plantillas…" value="${esc(query)}"></div><div class="filters">${['Todas','Básicas','Producto','Logística'].map(f=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f}</button>`).join('')}</div><div id="template-list"></div><button class="new-template" id="blank">＋ Crear desde cero</button>`;renderTemplateList();$('#search').oninput=e=>{query=e.target.value;renderTemplateList()};root.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;renderLeft()});$('#blank').onclick=()=>{if(!confirm('¿Crear una etiqueta vacía? El diseño actual se reemplazará.'))return;change(()=>{state.elements=[];state.template='blank';state.name='Etiqueta sin título';selected=null});renderLeft()}}
+function render(){finishInlineEdit(true,false);let k=scale();updateCanvasStage(k);$('#board').style.width=state.w*k+'px';$('#board').style.height=state.h*k+'px';$('#board').style.background=state.bg;applyGrid($('#grid').checked,k);$('#board').innerHTML=state.elements.map(e=>`<div class="element ${e.id===selected?'selected':''}" data-id="${e.id}" style="left:${e.x*k}px;top:${e.y*k}px;width:${e.w*k}px;height:${e.h*k}px;transform:rotate(${e.rotation||0}deg)">${elementContent(e)}</div>`).join('');$('#dimension').textContent=`${state.w} × ${state.h} mm`;$('#canvas-title').textContent=state.name.toUpperCase();$('#top-ruler').innerHTML=Array.from({length:11},(_,i)=>`<span>${+(state.w*i/10).toFixed(1)}</span>`).join('');$('#element-count').textContent=state.elements.length+' elementos';document.querySelectorAll('[data-orientation]').forEach(button=>{button.setAttribute('aria-pressed',String(button.dataset.orientation==='portrait'?state.h>state.w:state.w>=state.h));button.disabled=state.w===state.h});$('#width').value=state.w;$('#height').value=state.h;$('#background').value=state.bg;$('#bgcode').textContent=state.bg.toUpperCase();$('#docname').value=state.name;$('#size').value=[...$('#size').options].some(o=>o.value===state.w+','+state.h)?state.w+','+state.h:'custom';$('#zoomval').textContent=fitWidth?'Ancho':fitScreen?'Encajar':Math.round(zoom*100)+'%';$('#fit-screen').setAttribute('aria-pressed',String(fitScreen));$('#fitwidth').setAttribute('aria-pressed',String(fitWidth));$('#canvas-area').classList.toggle('fit-width',fitWidth);$('#canvas-area').classList.toggle('fit-screen',fitScreen);$('#undo').disabled=!history.length;$('#redo').disabled=!future.length;renderProperties();scheduleViewSave()}
+function renderLeft(){document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('active',b.dataset.tab===tab));const root=$('#left-content');if(tab==='templates'){root.innerHTML=`<h2>Un buen comienzo.</h2><p class="subtitle">Elige una plantilla y hazla tuya.</p><div class="search"><input id="search" placeholder="Buscar plantillas…" value="${esc(query)}"></div><div class="filters">${['Todas','Mis diseños','Básicas','Producto','Logística'].map(f=>`<button data-filter="${f}" class="${filter===f?'active':''}">${f}</button>`).join('')}</div><div id="template-list"></div><button class="new-template" id="blank">＋ Crear desde cero</button>`;renderTemplateList();$('#search').oninput=e=>{query=e.target.value;renderTemplateList();persistView()};root.querySelectorAll('[data-filter]').forEach(b=>b.onclick=()=>{filter=b.dataset.filter;renderLeft();persistView()});$('#blank').onclick=()=>{if(!confirm('¿Crear una etiqueta vacía? El diseño actual se reemplazará.'))return;change(()=>{delete state.savedId;state.elements=[];state.template='blank';state.name='Etiqueta sin título';selected=null});renderLeft()}}
 if(tab==='elements'){root.innerHTML=`<h2>Dale forma.</h2><p class="subtitle">Añade un elemento y edita sus propiedades a la derecha.</p><div class="tool-buttons"><button data-add="text"><strong>T</strong>Texto</button><button data-add="barcode"><strong>▥</strong>Código de barras</button><button data-add="image"><strong>▧</strong>Imagen</button><button data-add="table"><strong>▦</strong>Tabla</button><button data-add="rect"><strong>□</strong>Rectángulo</button><button data-add="line"><strong>―</strong>Línea</button><button data-add="number"><strong>01</strong>Consecutivo</button></div><p class="help">Selecciona cualquier elemento para ajustar su posición, tamaño y contenido.</p>`;root.querySelectorAll('[data-add]').forEach(b=>b.onclick=()=>addElement(b.dataset.add))}
-if(tab==='data'){root.innerHTML=`<h2>Diseña una vez.</h2><p class="subtitle">Imprime una etiqueta por cada fila de tu archivo CSV.</p><button class="primary wide" id="csv">↥ Importar CSV</button><button class="wide" id="csv-example">↓ Descargar ejemplo</button><p class="help">Usa campos como <code>{{producto}}</code> en tus textos. Para consecutivos, usa <code>{{numero}}</code>.</p>${rows.length?`<div class="section-label">${rows.length} REGISTROS IMPORTADOS</div><label>Vista previa<select id="record">${rows.map((r,i)=>`<option value="${i}" ${i===record?'selected':''}>Registro ${i+1}: ${esc(Object.values(r)[0])}</option>`).join('')}</select></label><div style="margin-top:20px">${csvFields.map(f=>`<div class="data-row"><span>${esc(f)}</span><code>{{${esc(f)}}}</code></div>`).join('')}</div><button id="clearcsv" class="wide">Quitar datos</button>`:'<div class="empty">Tus datos se procesan en este navegador. No se envían a un servidor.</div>'}`;$('#csv').onclick=()=>pickFile('.csv',async file=>{try{const parsed=parseCSV(await file.text());if(parsed.length<2)throw Error('El CSV debe tener encabezados y al menos una fila.');csvFields=parsed[0].map(x=>x.trim());if(csvFields.some(x=>!x)||new Set(csvFields).size!==csvFields.length)throw Error('Usa encabezados únicos y no vacíos.');rows=parsed.slice(1).filter(r=>r.some(Boolean)).map(r=>Object.fromEntries(csvFields.map((f,i)=>[f,r[i]||''])));if(rows.length>500)throw Error('Máximo 500 filas por lote.');record=0;renderLeft();render();toast('CSV importado: '+rows.length+' registros')}catch(e){rows=[];toast(e.message)}});$('#csv-example').onclick=()=>download('ejemplo-etiquetas.csv','producto,precio,codigo\nJabón de oliva,149.00,7501234567893\nVela aromática,249.00,7501234567886','text/csv');if(rows.length){$('#record').onchange=e=>{record=+e.target.value;render()};$('#clearcsv').onclick=()=>{rows=[];csvFields=[];renderLeft();render()}}}
-if(tab==='library'){let lib=getLibrary();root.innerHTML=`<h2>Tus diseños.</h2><p class="subtitle">Guardados en este navegador. Descarga un archivo para llevarlos contigo.</p><button id="store-design" class="primary wide">＋ Guardar diseño actual</button>${lib.length?lib.map((d,i)=>`<div class="saved-item"><b>${esc(d.name)}</b><button data-load="${i}" title="Abrir">↗</button><button data-remove="${i}" title="Eliminar">×</button></div>`).join(''):'<div class="empty">Tu próxima idea empieza aquí.</div>'}`;$('#store-design').onclick=()=>{lib.push(clone(state));try{localStorage.setItem('labela-library',JSON.stringify(lib));renderLeft();toast('Diseño guardado')}catch{toast('Sin espacio local. Descarga el diseño.')}};root.querySelectorAll('[data-load]').forEach(b=>b.onclick=()=>{change(()=>{state=clone(lib[+b.dataset.load]);selected=null});renderLeft()});root.querySelectorAll('[data-remove]').forEach(b=>b.onclick=()=>{lib.splice(+b.dataset.remove,1);localStorage.setItem('labela-library',JSON.stringify(lib));renderLeft()})}}
-function renderTemplateList(){$('#template-list').innerHTML=templates.filter(t=>(filter==='Todas'||t.category===filter)&&t.name.toLowerCase().includes(query.toLowerCase())).map(t=>`<button class="template-card ${state.template===t.id?'selected':''}" data-template="${t.id}"><div class="preview">${svgDoc({w:t.w,h:t.h,bg:'#ffffff',elements:t.elements()}, {},0)}</div><b>${t.name}</b><small>${t.w} × ${t.h} mm · ${t.category}</small></button>`).join('');document.querySelectorAll('[data-template]').forEach(b=>b.onclick=()=>{const t=templates.find(t=>t.id===b.dataset.template);if(state.elements.length&&!confirm('¿Aplicar esta plantilla? Se reemplazará el diseño actual. Puedes deshacer el cambio.'))return;change(()=>{state={name:t.name,w:t.w,h:t.h,bg:'#ffffff',template:t.id,elements:t.elements()};selected=null;zoom=1});renderLeft()})}
-function getLibrary(){try{return JSON.parse(localStorage.getItem('labela-library'))||[]}catch{return []}}
+if(tab==='data'){root.innerHTML=`<h2>Diseña una vez.</h2><p class="subtitle">Imprime una etiqueta por cada fila de tu archivo CSV.</p><button class="primary wide" id="csv">↥ Importar CSV</button><button class="wide" id="csv-example">↓ Descargar ejemplo</button><p class="help">Usa campos como <code>{{producto}}</code> en tus textos. Para consecutivos, usa <code>{{numero}}</code>.</p>${rows.length?`<div class="section-label">${rows.length} REGISTROS IMPORTADOS</div><label>Vista previa<select id="record">${rows.map((r,i)=>`<option value="${i}" ${i===record?'selected':''}>Registro ${i+1}: ${esc(Object.values(r)[0])}</option>`).join('')}</select></label><div style="margin-top:20px">${csvFields.map(f=>`<div class="data-row"><span>${esc(f)}</span><code>{{${esc(f)}}}</code></div>`).join('')}</div><button id="clearcsv" class="wide">Quitar datos</button>`:'<div class="empty">Tus datos se procesan en este navegador. No se envían a un servidor.</div>'}`;$('#csv').onclick=()=>pickFile('.csv',async file=>{try{const parsed=parseCSV(await file.text());if(parsed.length<2)throw Error('El CSV debe tener encabezados y al menos una fila.');csvFields=parsed[0].map(x=>x.trim());if(csvFields.some(x=>!x)||new Set(csvFields).size!==csvFields.length)throw Error('Usa encabezados únicos y no vacíos.');rows=parsed.slice(1).filter(r=>r.some(Boolean)).map(r=>Object.fromEntries(csvFields.map((f,i)=>[f,r[i]||''])));if(rows.length>500)throw Error('Máximo 500 filas por lote.');record=0;renderLeft();render();persistView();toast('CSV importado: '+rows.length+' registros')}catch(e){rows=[];toast(e.message)}});$('#csv-example').onclick=()=>download('ejemplo-etiquetas.csv','producto,precio,codigo\nJabón de oliva,149.00,7501234567893\nVela aromática,249.00,7501234567886','text/csv');if(rows.length){$('#record').onchange=e=>{record=+e.target.value;render();persistView()};$('#clearcsv').onclick=()=>{rows=[];csvFields=[];renderLeft();render();persistView()}}}
+if(tab==='library'){
+ const library=getLibrary(),linked=library.some(d=>d.savedId===state.savedId);
+ root.innerHTML=`<h2>Tus diseños.</h2><p class="subtitle">Cambia el nombre aquí. Tus diseños también aparecen en Plantillas.</p><button id="store-design" class="primary wide">${linked?'✓ Guardar cambios':'＋ Guardar diseño actual'}</button>${linked?'<button id="copy-design" class="wide">＋ Guardar como copia</button>':''}${library.length?library.map(d=>`<div class="saved-item"><div class="saved-design-info"><label class="sr-only" for="design-${esc(d.savedId)}">Nombre del diseño</label><input id="design-${esc(d.savedId)}" data-design-name="${esc(d.savedId)}" maxlength="100" value="${esc(d.name)}" aria-label="Renombrar diseño ${esc(d.name)}"><small>${d.w} × ${d.h} mm${state.savedId===d.savedId?' · Abierto':''}</small></div><button data-load="${esc(d.savedId)}" title="Abrir diseño" aria-label="Abrir ${esc(d.name)}">↗</button><button data-remove="${esc(d.savedId)}" title="Eliminar diseño" aria-label="Eliminar ${esc(d.name)}">×</button></div>`).join(''):'<div class="empty">Tu próxima idea empieza aquí.</div>'}`;
+ $('#store-design').onclick=()=>saveLibraryDesign();if($('#copy-design'))$('#copy-design').onclick=()=>saveLibraryDesign(true);
+ root.querySelectorAll('[data-load]').forEach(button=>button.onclick=()=>loadLibraryDesign(button.dataset.load));
+ root.querySelectorAll('[data-remove]').forEach(button=>button.onclick=()=>deleteLibraryDesign(button.dataset.remove));
+ root.querySelectorAll('[data-design-name]').forEach(input=>{input.onchange=()=>{if(!renameSavedDesign(input.dataset.designName,input.value))input.value=getLibrary().find(d=>d.savedId===input.dataset.designName)?.name||''};input.onkeydown=event=>{if(event.key==='Enter'){event.preventDefault();input.blur()}}});
+}}
+function getLibrary(){
+ try{const stored=JSON.parse(localStorage.getItem('labela-library'))||[];if(!Array.isArray(stored))return [];return stored.map((doc,index)=>{const value=validate(doc);if(typeof value.savedId!=='string'||!value.savedId||!/^[-a-zA-Z0-9_]+$/.test(value.savedId))value.savedId='legacy-'+index;return value})}catch{return []}
+}
+function writeLibrary(library){localStorage.setItem('labela-library',JSON.stringify(library))}
+function newDesignId(){return typeof crypto!=='undefined'&&crypto.randomUUID?crypto.randomUUID():'design-'+Date.now().toString(36)+'-'+Math.random().toString(36).slice(2)}
+function refreshDesignNames(){
+ const library=getLibrary();document.querySelectorAll('[data-saved-name]').forEach(node=>{const doc=library.find(d=>d.savedId===node.dataset.savedName);if(doc)node.textContent=doc.name});
+ document.querySelectorAll('[data-design-name]').forEach(input=>{const doc=library.find(d=>d.savedId===input.dataset.designName);if(doc&&input!==document.activeElement)input.value=doc.name});
+}
+function saveLibraryDesign(asCopy=false){
+ finishInlineEdit(true,false);const library=getLibrary(),index=asCopy?-1:library.findIndex(d=>d.savedId===state.savedId),id=index>=0?state.savedId:newDesignId(),doc={...clone(state),savedId:id};
+ try{if(index>=0)library[index]=doc;else library.push(doc);writeLibrary(library);state.savedId=id;persist();renderLeft();toast(index>=0?'Diseño actualizado':'Diseño guardado')}catch{toast('Sin espacio local. Descarga el diseño.')}
+}
+function renameSavedDesign(id,name){
+ name=String(name).trim().slice(0,100);if(!name){toast('Escribe un nombre para el diseño.');return false}
+ const library=getLibrary(),doc=library.find(d=>d.savedId===id);if(!doc)return false;
+ try{doc.name=name;writeLibrary(library);if(state.savedId===id){checkpoint();state.name=name;render();persist()}refreshDesignNames();return true}catch{toast('No se pudo guardar el nombre.');return false}
+}
+function renameCurrentDesign(name){
+ const clean=String(name).trim().slice(0,100);if(!clean){toast('Escribe un nombre para el diseño.');$('#docname').value=state.name;return}
+ change(()=>state.name=clean);refreshDesignNames();
+}
+function loadLibraryDesign(id){
+ finishInlineEdit(true,false);persist();const doc=getLibrary().find(d=>d.savedId===id);if(!doc)return;
+ change(()=>{state=clone(doc);selected=null;activeCell=null;zoom=1;fitScreen=true;fitWidth=false;seq=Math.max(seq,...state.elements.map(e=>e.id))});const area=$('#canvas-area');if(area){area.scrollTop=0;area.scrollLeft=0}renderLeft();persistView();
+}
+function deleteLibraryDesign(id){
+ try{writeLibrary(getLibrary().filter(d=>d.savedId!==id));if(state.savedId===id){delete state.savedId;persist()}renderLeft()}catch{toast('No se pudo eliminar el diseño.')}
+}
+function savedTemplateCards(library){
+ return library.map(doc=>`<button class="template-card ${state.savedId===doc.savedId?'selected':''}" data-saved-template="${esc(doc.savedId)}"><div class="preview">${svgDoc(doc,{},0)}</div><b data-saved-name="${esc(doc.savedId)}">${esc(doc.name)}</b><small>${doc.w} × ${doc.h} mm · Mi diseño</small></button>`).join('');
+}
+function renderTemplateList(){
+ const personal=(filter==='Todas'||filter==='Mis diseños')?getLibrary().filter(d=>d.name.toLowerCase().includes(query.toLowerCase())):[],builtins=templates.filter(t=>(filter==='Todas'||t.category===filter)&&t.name.toLowerCase().includes(query.toLowerCase()));
+ $('#template-list').innerHTML=(personal.length?'<div class="template-section">MIS DISEÑOS</div>'+savedTemplateCards(personal):'')+(builtins.length?(personal.length?'<div class="template-section">PLANTILLAS</div>':'')+builtins.map(t=>`<button class="template-card ${!state.savedId&&state.template===t.id?'selected':''}" data-template="${t.id}"><div class="preview">${svgDoc({w:t.w,h:t.h,bg:'#ffffff',elements:t.elements()}, {},0)}</div><b>${t.name}</b><small>${t.w} × ${t.h} mm · ${t.category}</small></button>`).join(''):'')+(!personal.length&&!builtins.length?'<div class="empty">No hay diseños para esta búsqueda.</div>':'');
+ document.querySelectorAll('[data-saved-template]').forEach(button=>button.onclick=()=>loadLibraryDesign(button.dataset.savedTemplate));
+ document.querySelectorAll('[data-template]').forEach(button=>button.onclick=()=>{const t=templates.find(t=>t.id===button.dataset.template);if(state.elements.length&&!confirm('¿Aplicar esta plantilla? Se reemplazará el diseño actual. Puedes deshacer el cambio.'))return;finishInlineEdit();change(()=>{state={name:t.name,w:t.w,h:t.h,bg:'#ffffff',template:t.id,elements:t.elements()};selected=null;activeCell=null;zoom=1});renderLeft()});
+}
 const MM_PER_PT=25.4/72;
 function textSizeInPoints(e){return Math.round(e.size/MM_PER_PT*10)/10}
 function setTextSize(e,points){
@@ -187,34 +402,50 @@ function verticalAlignmentIcon(align){
  return `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 2h18M3 22h18" opacity=".4"/><path d="M5 ${y}h14M5 ${y+4}h14"/></svg>`;
 }
 function renderTextToolbar(){
- const e=state.elements.find(e=>e.id===selected),root=$('#text-toolbar'),disabled=!e||e.type!=='text';
- root.innerHTML=`<span class="text-toolbar-label">Texto</span><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(e)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&e.bold}" ${disabled?'disabled':''}>B</button><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(e.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(e.valign||'top')===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="Ajustar texto al ancho del sticker con 5% de margen a cada lado" ${disabled?'disabled':''}>↔ Ajustar texto</button>${disabled?'<span class="text-toolbar-help">Selecciona un texto</span>':''}`;
- root.onpointerdown=()=>{if(activeEditor){const current=activeEditor.e;finishInlineEdit(true,false);const node=$(`[data-id="${current.id}"]`);node.classList.remove('editing');node.innerHTML=elementContent(current)}};
+ const target=formattingTarget(),e=target?.e,cell=target?.cell,style=target?.style,root=$('#text-toolbar'),disabled=!target;
+ const label=cell?`Celda ${cell.row+1} · ${cell.col+1}`:e?.type==='table'?'Tabla completa':'Texto';
+ const angle=disabled?0:normalizedAngle(e.type==='table'?(style.textRotation||0):(e.rotation||0));
+ root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-rotation" role="group" aria-label="Girar texto"><button id="text-turn-left" title="Girar texto 90° a la izquierda" aria-label="Girar texto 90° a la izquierda" ${disabled?'disabled':''}>↶ 90°</button><button id="text-turn-right" title="Girar texto 90° a la derecha" aria-label="Girar texto 90° a la derecha" ${disabled?'disabled':''}>↷ 90°</button><button id="text-turn-reset" title="Restablecer giro del texto a 0°" aria-label="Restablecer giro del texto" ${disabled?'disabled':''}>${angle}°</button></div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
+ root.onpointerdown=()=>{if(activeEditor)finishInlineEdit(true,false)};
  if(disabled)return;
- $('#font-smaller').onclick=()=>change(()=>setTextSize(e,Math.max(1,Math.round(textSizeInPoints(e))-1)));
- $('#font-larger').onclick=()=>change(()=>setTextSize(e,Math.min(1000,Math.round(textSizeInPoints(e))+1)));
- $('#font-points').onchange=event=>{const points=+event.target.value;if(!Number.isFinite(points)||points<1||points>1000){toast('El tamaño debe estar entre 1 y 1000 pt.');renderTextToolbar();return}change(()=>setTextSize(e,points))};
- $('#text-bold').onclick=()=>change(()=>e.bold=!e.bold);
- root.querySelectorAll('[data-text-align]').forEach(button=>button.onclick=()=>change(()=>e.align=button.dataset.textAlign));
- root.querySelectorAll('[data-text-valign]').forEach(button=>button.onclick=()=>change(()=>e.valign=button.dataset.textValign));
- $('#toolbar-fit-text').onclick=()=>{const fitted=fitTextToSticker(e,state,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')};
+ const set=(key,value)=>change(()=>applyTextFormat(target,key,value));
+ $('#text-font').onchange=event=>set('font',event.target.value);
+ $('#text-ink').onchange=event=>set('color',event.target.value);
+ $('#font-smaller').onclick=()=>set('size',Math.max(1,Math.round(textSizeInPoints(style))-1)*MM_PER_PT);
+ $('#font-larger').onclick=()=>set('size',Math.min(1000,Math.round(textSizeInPoints(style))+1)*MM_PER_PT);
+ $('#font-points').onchange=event=>{const points=+event.target.value;if(!Number.isFinite(points)||points<1||points>1000){toast('El tamaño debe estar entre 1 y 1000 pt.');renderTextToolbar();return}set('size',points*MM_PER_PT)};
+ $('#text-bold').onclick=()=>set('bold',!style.bold);
+ root.querySelectorAll('[data-text-align]').forEach(button=>button.onclick=()=>set('align',button.dataset.textAlign));
+ root.querySelectorAll('[data-text-valign]').forEach(button=>button.onclick=()=>set('valign',button.dataset.textValign));
+ $('#text-turn-left').onclick=()=>change(()=>rotateTextTarget(target,-90));
+ $('#text-turn-right').onclick=()=>change(()=>rotateTextTarget(target,90));
+ $('#text-turn-reset').onclick=()=>change(()=>rotateTextTarget(target,0,true));
+ if(cell)$('#format-entire-table').onclick=()=>{activeCell=null;render()};
+ $('#toolbar-fit-text').onclick=()=>{
+  if(e.type==='table')change(()=>{if(cell)fitCellText(e,cell);else for(let r=0;r<e.rows;r++)for(let c=0;c<e.cols;c++)fitCellText(e,{row:r,col:c})});
+  else{const fitted=fitTextToSticker(e,state,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')}
+ };
 }
-function renderProperties(){renderTextToolbar();const e=state.elements.find(e=>e.id===selected);$('#properties').innerHTML=e?`<section><div class="section-label">${{text:'TEXTO',barcode:'CÓDIGO DE BARRAS',rect:'RECTÁNGULO',image:'IMAGEN',line:'LÍNEA',table:'TABLA'}[e.type]} <span style="float:right">SELECCIONADO</span></div>${['text','barcode'].includes(e.type)?`<label>Contenido<textarea data-prop="text" rows="${e.type==='text'?3:2}">${esc(e.text)}</textarea></label>`:''}${e.type==='barcode'?`<label class="field">Simbología<select data-prop="format"><option value="ean13" ${e.format!=='code39'?'selected':''}>EAN-13</option><option value="code39" ${e.format==='code39'?'selected':''}>Code 39</option></select></label><p class="small">EAN-13: 12 dígitos calculan el verificador. Code 39: letras y números.</p>`:''}<div class="two"><label>X (mm)<input data-prop="x" type="number" step="0.5" value="${e.x}"></label><label>Y (mm)<input data-prop="y" type="number" step="0.5" value="${e.y}"></label></div><div class="two"><label>Ancho (mm)<input data-prop="w" type="number" min=".5" step=".5" value="${e.w}"></label><label>Alto (mm)<input data-prop="h" type="number" min=".2" step=".5" value="${e.h}"></label></div>${e.type==='table'?tableProperties(e):''}${e.type==='text'?`<button class="wide" id="edit-canvas">✎ Editar en el lienzo</button><label class="field">Tipografía<select data-prop="font">${['Arial','Georgia','Courier New'].map(f=>`<option ${e.font===f?'selected':''}>${f}</option>`).join('')}</select></label><label class="field"><input type="checkbox" data-prop="bold" ${e.bold?'checked':''}> Negrita</label>`:''}<div class="two"><label>Rotación °<input data-prop="rotation" type="number" min="-360" max="360" value="${e.rotation||0}"></label><label>Color<input type="color" data-prop="color" value="${e.color}"></label></div>${e.type==='rect'?`<label><input type="checkbox" data-prop="fill" ${e.fill?'checked':''}> Rellenar figura</label>`:''}<div class="two"><button id="center-element" title="Centrar el cuadro horizontal y verticalmente en la etiqueta">Centrar en etiqueta</button><button id="front-element">Al frente</button></div></section>`:`<section><div class="section-label">PROPIEDADES</div><p class="help">Selecciona un elemento de la etiqueta para personalizarlo.</p><button class="wide" id="add-shortcut">＋ Añadir elemento</button></section>`;$('#properties').querySelectorAll('[data-prop]').forEach(input=>input.onchange=()=>{let key=input.dataset.prop,v=input.type==='checkbox'?input.checked:input.type==='number'?+input.value:input.value;if(input.type==='number'&&!Number.isFinite(v))return;if(['w','h','size'].includes(key))v=Math.max(.2,v);change(()=>e[key]=v)});if(e){if(e.type==='table')wireTableProperties(e);$('#properties').querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>change(()=>e.align=b.dataset.align));if(e.type==='text'){$('#edit-canvas').onclick=()=>startInlineEdit(e)};$('#center-element').onclick=()=>change(()=>Object.assign(e,centeredPosition(e,state.w,state.h)));$('#front-element').onclick=()=>change(()=>{state.elements=state.elements.filter(x=>x!==e);state.elements.push(e)})}else $('#add-shortcut').onclick=()=>{tab='elements';renderLeft()}}
+function renderProperties(){renderTextToolbar();const e=state.elements.find(e=>e.id===selected);$('#properties').innerHTML=e?`<section><div class="section-label">${{text:'TEXTO',barcode:'CÓDIGO DE BARRAS',rect:'RECTÁNGULO',image:'IMAGEN',line:'LÍNEA',table:'TABLA'}[e.type]} <span style="float:right">SELECCIONADO</span></div>${['text','barcode'].includes(e.type)?`<label>Contenido<textarea data-prop="text" rows="${e.type==='text'?3:2}">${esc(e.text)}</textarea></label>`:''}${e.type==='barcode'?`<label class="field">Simbología<select data-prop="format"><option value="ean13" ${e.format!=='code39'?'selected':''}>EAN-13</option><option value="code39" ${e.format==='code39'?'selected':''}>Code 39</option></select></label><p class="small">EAN-13: 12 dígitos calculan el verificador. Code 39: letras y números.</p>`:''}<div class="two"><label>X (mm)<input data-prop="x" type="number" step="0.5" value="${e.x}"></label><label>Y (mm)<input data-prop="y" type="number" step="0.5" value="${e.y}"></label></div><div class="two"><label>Ancho (mm)<input data-prop="w" type="number" min=".5" step=".5" value="${e.w}"></label><label>Alto (mm)<input data-prop="h" type="number" min=".2" step=".5" value="${e.h}"></label></div>${e.type==='table'?tableProperties(e):''}${e.type==='text'?`<button class="wide" id="edit-canvas">✎ Editar en el lienzo</button><label class="field">Tipografía<select data-prop="font">${['Arial','Georgia','Courier New'].map(f=>`<option ${e.font===f?'selected':''}>${f}</option>`).join('')}</select></label><label class="field"><input type="checkbox" data-prop="bold" ${e.bold?'checked':''}> Negrita</label>`:''}<div class="two"><label>Rotación °<input data-prop="rotation" type="number" min="-360" max="360" value="${e.rotation||0}"></label><label>Color<input type="color" data-prop="color" value="${e.color}"></label></div>${e.type==='rect'?`<label><input type="checkbox" data-prop="fill" ${e.fill?'checked':''}> Rellenar figura</label>`:''}<div class="two"><button id="center-element" title="Centrar el cuadro horizontal y verticalmente en la etiqueta">Centrar en etiqueta</button><button id="front-element">Al frente</button></div></section>`:`<section><div class="section-label">PROPIEDADES</div><p class="help">Selecciona un elemento de la etiqueta para personalizarlo.</p><button class="wide" id="add-shortcut">＋ Añadir elemento</button></section>`;$('#properties').querySelectorAll('[data-prop]').forEach(input=>input.onchange=()=>{let key=input.dataset.prop,v=input.type==='checkbox'?input.checked:input.type==='number'?+input.value:input.value;if(input.type==='number'&&!Number.isFinite(v))return;if(['w','h','size'].includes(key))v=Math.max(.2,v);change(()=>{if(e.type==='table'&&CELL_FORMAT_KEYS.includes(key))applyTextFormat({e,cell:null},key,v);else e[key]=v})});if(e){if(e.type==='table')wireTableProperties(e);$('#properties').querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>change(()=>e.align=b.dataset.align));if(e.type==='text'){$('#edit-canvas').onclick=()=>startInlineEdit(e)};$('#center-element').onclick=()=>change(()=>Object.assign(e,centeredPosition(e,state.w,state.h)));$('#front-element').onclick=()=>change(()=>{state.elements=state.elements.filter(x=>x!==e);state.elements.push(e)})}else $('#add-shortcut').onclick=()=>setTab('elements')}
 function addElement(type){if(type==='image'){pickFile('image/png,image/jpeg,image/webp',file=>{if(file.size>3e6)return toast('Usa una imagen de hasta 3 MB.');const reader=new FileReader;reader.onload=()=>{change(()=>{let e=el('image',5,5,25,20,'',{src:reader.result});state.elements.push(e);selected=e.id})};reader.readAsDataURL(file)});return}change(()=>{const e=type==='table'?el('table',state.w*.05,state.h*.05,state.w*.9,Math.min(30,state.h*.7),'',{rows:3,cols:2,header:true,cells:[['Campo','Valor'],['Lote','001'],['Producto','Descripción']],size:Math.min(3,state.h*.7/4.5),valign:'middle'}):type==='text'?el('text',5,5,Math.min(65,state.w-10),8,'Tu texto aquí',{size:4}):type==='number'?el('text',5,5,30,7,'N.º {{numero}}',{size:4}):type==='barcode'?el('barcode',5,5,Math.min(50,state.w-10),15,'7501234567893'):type==='line'?el('line',5,5,Math.min(60,state.w-10),.4):el('rect',5,5,25,15);state.elements.push(e);selected=e.id})}
 function pickFile(accept,callback){const input=$('#file');input.accept=accept;input.value='';input.onchange=()=>{if(input.files[0])callback(input.files[0])};input.click()}
 function download(name,content,type){let url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const delimiter=(text.split('\n')[0].match(/;/g)||[]).length>(text.split('\n')[0].match(/,/g)||[]).length?';':',';let result=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);result.push(row);row=[];cell=''}else cell+=c}if(quoted)throw Error('El CSV contiene comillas sin cerrar.');if(cell||row.length){row.push(cell);result.push(row)}return result}
-function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');e.id=i+1});return d}
+function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');const elementIds=new Set();d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.type==='table'){validateCellFormats(e);if(e.textRotation!==undefined&&![0,90,180,270].includes(e.textRotation))throw Error('Giro de texto de tabla inválido.');}if(e.color.toLowerCase()==='#182c21')e.color='#000000';if(!Number.isInteger(e.id)||e.id<1||elementIds.has(e.id)){let next=i+1;while(elementIds.has(next))next++;e.id=next}elementIds.add(e.id)});return d}
 $('#board').ondblclick=event=>{
- const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle'))return;
+ const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle,[data-table-axis],.inline-text'))return;
  const e=state.elements.find(e=>e.id===+node.dataset.id);
- if(e.type==='table'){selected=e.id;const cell=event.target.closest('[data-cell]')?.dataset.cell||'0,0';renderProperties();const input=$(`[data-table-cell="${cell}"]`);input?.focus();input?.select()}else startInlineEdit(e);
+ if(e.type==='table'){startInlineEdit(e,undefined,cellFromEvent(e,node,event));
+ }else startInlineEdit(e);
 };
 $('#board').onpointerdown=event=>{
  if(event.button!==0||event.target.closest('.inline-text'))return;
- const node=event.target.closest('.element');if(!node){finishInlineEdit();selected=null;render();return}
- const e=state.elements.find(e=>e.id===+node.dataset.id),resizing=!!event.target.closest('.resize-handle');
- selected=e.id;document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();
+ const node=event.target.closest('.element'),track=event.target.closest('[data-table-axis]'),axis=track?.dataset.tableAxis,index=+(track?.dataset.track||0),resizing=!!event.target.closest('.resize-handle');
+ finishInlineEdit(true,false);
+ if(!node){selected=null;activeCell=null;render();return}
+ const e=state.elements.find(e=>e.id===+node.dataset.id);
+ selected=e.id;if(e.type==='table'&&!track&&!resizing)activeCell={id:e.id,...cellFromEvent(e,node,event)};else if(e.type!=='table')activeCell=null;document.querySelectorAll('.table-cell-selection').forEach(mark=>mark.remove());if(e.type==='table')node.insertAdjacentHTML('beforeend',cellSelectionMarkup(e));document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();scheduleViewSave();
+ if(track&&e.type==='table'){beginTableTrackResize(event,node,e,axis,index);return}
  const start={px:event.clientX,py:event.clientY,x:e.x,y:e.y,w:e.w,h:e.h},k=scale();let moved=false;
  node.setPointerCapture(event.pointerId);
  node.onpointermove=ev=>{
@@ -222,7 +453,7 @@ $('#board').onpointerdown=event=>{
   if(!moved&&Math.hypot(ev.clientX-start.px,ev.clientY-start.py)<3)return;
   if(!moved){checkpoint();moved=true}
   if(resizing)Object.assign(e,resizedBounds(start,dx,dy,e.rotation||0));
-  else{e.x=Math.round(Math.max(0,Math.min(Math.max(0,state.w-e.w),start.x+dx))*2)/2;e.y=Math.round(Math.max(0,Math.min(Math.max(0,state.h-e.h),start.y+dy))*2)/2}
+  else{e.x=Math.round((start.x+dx)*2)/2;e.y=Math.round((start.y+dy)*2)/2}
   node.style.left=e.x*k+'px';node.style.top=e.y*k+'px';node.style.width=e.w*k+'px';node.style.height=e.h*k+'px';
   if(resizing)node.innerHTML=elementContent(e);
  };
@@ -234,10 +465,14 @@ document.querySelectorAll('[data-orientation]').forEach(button=>button.onclick=(
  if(state.w===state.h||(direction==='portrait'?state.h>state.w:state.w>state.h))return;
  change(()=>{orientLabel(state,direction,$('#rotate-design').checked);zoom=1});
 });
-$('#fitwidth').onclick=()=>{finishInlineEdit();fitWidth=!fitWidth;zoom=1;render()};
-$('#docname').onchange=e=>change(()=>state.name=e.target.value||'Sin título');$('#size').onchange=e=>{if(e.target.value==='custom')return;const [w,h]=e.target.value.split(',').map(Number);change(()=>{state.w=w;state.h=h})};for(const id of ['width','height'])$('#'+id).onchange=e=>{const v=+e.target.value;if(v<10||v>300){toast('El tamaño debe estar entre 10 y 300 mm.');render();return}change(()=>state[id==='width'?'w':'h']=v)};$('#background').onchange=e=>change(()=>state.bg=e.target.value);$('#grid').onchange=e=>$('#canvas-area').classList.toggle('no-grid',!e.target.checked);$('#zoomin').onclick=()=>{fitWidth=false;zoom=Math.min(2,zoom+.1);render()};$('#zoomout').onclick=()=>{fitWidth=false;zoom=Math.max(.3,zoom-.1);render()};$('#undo').onclick=()=>{if(!history.length)return;future.push(clone(state));state=history.pop();selected=null;render();renderLeft();persist()};$('#redo').onclick=()=>{if(!future.length)return;history.push(clone(state));state=future.pop();selected=null;render();renderLeft();persist()};$('#duplicate').onclick=()=>{const e=state.elements.find(x=>x.id===selected);if(e)change(()=>{const n={...clone(e),id:++seq,x:e.x+2,y:e.y+2};state.elements.push(n);selected=n.id});else toast('Selecciona un elemento para duplicarlo')};$('#delete').onclick=()=>{if(selected)change(()=>{state.elements=state.elements.filter(e=>e.id!==selected);selected=null})};document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;renderLeft()});$('#data-shortcut').onclick=()=>{tab='data';renderLeft()};$('#save').onclick=()=>download(state.name+'.labela.json',JSON.stringify(state,null,2),'application/json');$('#open').onclick=()=>pickFile('.json',async f=>{try{if(f.size>12e6)throw Error('El archivo supera 12 MB.');const d=validate(JSON.parse(await f.text()));change(()=>{state=d;seq=Math.max(seq,...d.elements.map(e=>e.id));selected=null});renderLeft();toast('Diseño abierto')}catch(e){toast(e.message)}});$('#exportsvg').onclick=()=>download(state.name+'.svg',svgDoc(),'image/svg+xml');
+$('#fitwidth').onclick=()=>{finishInlineEdit();fitWidth=!fitWidth;fitScreen=false;zoom=1;render()};
+$('#fit-screen').onclick=()=>{finishInlineEdit();fitScreen=true;fitWidth=false;zoom=1;render()};
+$('#docname').onchange=e=>renameCurrentDesign(e.target.value);$('#size').onchange=e=>{if(e.target.value==='custom')return;const [w,h]=e.target.value.split(',').map(Number);change(()=>{state.w=w;state.h=h})};for(const id of ['width','height'])$('#'+id).onchange=e=>{const v=+e.target.value;if(v<10||v>300){toast('El tamaño debe estar entre 10 y 300 mm.');render();return}change(()=>state[id==='width'?'w':'h']=v)};$('#background').onchange=e=>change(()=>state.bg=e.target.value);$('#grid').onchange=e=>{applyGrid(e.target.checked);persistView()};$('#zoomin').onclick=()=>{fitWidth=false;fitScreen=false;zoom=Math.min(2,zoom+.1);render()};$('#zoomout').onclick=()=>{fitWidth=false;fitScreen=false;zoom=Math.max(.3,zoom-.1);render()};$('#undo').onclick=()=>stepHistory('undo');$('#redo').onclick=()=>stepHistory('redo');$('#duplicate').onclick=()=>{const e=state.elements.find(x=>x.id===selected);if(e)change(()=>{const n={...clone(e),id:++seq,x:e.x+2,y:e.y+2};state.elements.push(n);selected=n.id});else toast('Selecciona un elemento para duplicarlo')};$('#delete').onclick=()=>{if(selected)change(()=>{state.elements=state.elements.filter(e=>e.id!==selected);selected=null})};document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));$('#data-shortcut').onclick=()=>setTab('data');$('#save').onclick=()=>download(state.name+'.labela.json',JSON.stringify(state,null,2),'application/json');$('#open').onclick=()=>pickFile('.json',async f=>{try{if(f.size>12e6)throw Error('El archivo supera 12 MB.');const d=validate(JSON.parse(await f.text()));delete d.savedId;change(()=>{state=d;seq=Math.max(seq,...d.elements.map(e=>e.id));selected=null});renderLeft();toast('Diseño abierto')}catch(e){toast(e.message)}});$('#exportsvg').onclick=()=>download(state.name+'.svg',svgDoc(),'image/svg+xml');
 $('#print').onclick=()=>{finishInlineEdit();updatePrintPreview();$('#printdialog').showModal()};
 $('#confirm-print').onclick=()=>{const job=updatePrintPreview();if(job)launchPrint(job)};
 window.addEventListener('beforeprint',prepareNativePrint);
 document.addEventListener('keydown',event=>{if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='p'){event.preventDefault();$('#print').click()}});
-document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();$(ev.shiftKey?'#redo':'#undo').click()}if(ev.key==='Delete'||ev.key==='Backspace'){$('#delete').click();ev.preventDefault()}const e=state.elements.find(e=>e.id===selected);if(e&&e.type==='text'&&(ev.key==='Enter'||ev.key==='F2')){ev.preventDefault();startInlineEdit(e);return}if(e&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)){ev.preventDefault();change(()=>{const n=ev.shiftKey?1:.5;e.x=Math.max(0,e.x+(ev.key==='ArrowRight'?n:ev.key==='ArrowLeft'?-n:0));e.y=Math.max(0,e.y+(ev.key==='ArrowDown'?n:ev.key==='ArrowUp'?-n:0))})}});window.addEventListener('resize',render);renderLeft();render();
+document.addEventListener('keydown',ev=>{if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;if((ev.ctrlKey||ev.metaKey)&&ev.key==='z'){ev.preventDefault();$(ev.shiftKey?'#redo':'#undo').click()}if(ev.key==='Delete'||ev.key==='Backspace'){$('#delete').click();ev.preventDefault()}const e=state.elements.find(e=>e.id===selected);if(e&&e.type==='text'&&(ev.key==='Enter'||ev.key==='F2')){ev.preventDefault();startInlineEdit(e);return}if(e&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(ev.key)){ev.preventDefault();change(()=>{const n=ev.shiftKey?1:.5;e.x=e.x+(ev.key==='ArrowRight'?n:ev.key==='ArrowLeft'?-n:0);e.y=e.y+(ev.key==='ArrowDown'?n:ev.key==='ArrowUp'?-n:0)})}});window.addEventListener('resize',render);if(typeof ResizeObserver!=='undefined')new ResizeObserver(()=>requestAnimationFrame(()=>{if(!activeEditor)render()})).observe($('#canvas-area'));const restoredView=restoreWorkspace();restoringView=true;renderLeft();render();
+requestAnimationFrame(()=>requestAnimationFrame(()=>{restoreScroll(restoredView);restoringView=false;persistView()}));
+for(const selector of ['#canvas-area','.left','.right'])$(selector)?.addEventListener('scroll',scheduleViewSave,{passive:true});
+window.addEventListener('pagehide',flushWorkspace);window.addEventListener('beforeunload',flushWorkspace);document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')flushWorkspace()});
