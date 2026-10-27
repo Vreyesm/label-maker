@@ -134,6 +134,31 @@ assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO',{rotation:90}),b=rot
 assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-30,-20,120,40,'Fuera',{rotation:35}),el('rect',80,110,20,30)]},k=3,stage=canvasStage(doc,k);return doc.elements.every(e=>{const b=rotatedElementBounds(e);return stage.left+b.left*k>=9.999&&stage.top+b.top*k>=9.999&&stage.left+b.right*k<=stage.width-9.999&&stage.top+b.bottom*k<=stage.height-9.999})})()`));
 assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-15,26,90,48,'TU TEXTO')]},extent=editingBounds(doc),bounds={width:450,height:350},k=fittedScale(extent,bounds);return extent.w*k<=bounds.width&&extent.h*k<=bounds.height})()`));
 assert(run(`(()=>{const doc={...sampleDoc,elements:[el('text',-25,5,90,40,'Fuera')]};return svgDoc(doc).includes('overflow="hidden"')&&svgDoc(doc).includes('translate(-25 5)')&&!buildPrintJob(doc,[{}],1).html.includes('resize-handle')})()`));
+// Formatting ranges touches every cell in the selected row/column, preserving neighbors.
+assert(run(`(()=>{const e=clone(testTable),cell={row:1,col:0,scope:'row'};applyTextFormat({e,cell},'size',5);return cellTextStyle(e,1,0).size===5&&cellTextStyle(e,1,1).size===5&&cellTextStyle(e,0,0).size===e.size})()`));
+assert(run(`(()=>{const e=clone(testTable),cell={row:0,col:1,scope:'col'};applyTextFormat({e,cell},'color','#ff0000');return cellTextStyle(e,0,1).color==='#ff0000'&&cellTextStyle(e,1,1).color==='#ff0000'&&cellTextStyle(e,1,0).color==='#000000'})()`));
+assert.equal(run(`tableRangeCells(testTable,{row:1,col:0,scope:'row'}).length`),2);
+assert.equal(run(`tableRangeCells(testTable,null).length`),4);
+// Inserting preserves existing content/styles; deleting restores the original grid.
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:0,col:0},'color','#ff0000');mutateTableTrack(e,'col',1);const good=e.cols===3&&e.w===120&&e.cells[0][1]===''&&e.cells[0][2]==='Valor'&&e.cellFormats[0][1].color==='#ff0000'&&e.cellFormats[0][1]!==e.cellFormats[0][0];mutateTableTrack(e,'col',1,'delete');return good&&e.cols===2&&e.w===80&&e.cells[0][1]==='Valor'})()`));
+assert(run(`(()=>{const e={...clone(testTable),rowSizes:[1,3]};mutateTableTrack(e,'row',1);const good=e.rows===3&&e.h===30&&e.cells[2][1]==='001'&&tableTracks(e).rows[2]===18;mutateTableTrack(e,'row',1,'delete');return good&&e.h===24&&e.cells[1][1]==='001'})()`));
+assert.throws(()=>run(`mutateTableTrack({...clone(testTable),rows:1,cells:[['A','B']]},'row',0,'delete')`));
+assert.throws(()=>run(`mutateTableTrack(clone(testTable),'row',0,'invalid')`));
+assert.throws(()=>run(`(()=>{const e=clone(testTable);resizeTable(e,10,2);mutateTableTrack(e,'row',10)})()`));
+// Full-track resizing changes only that track and expands the total table extent.
+assert(run(`(()=>{const e=clone(testTable);setSingleTrackSize(e,'col',0,50);return e.w===90&&tableTracks(e).cols[0]===50&&tableTracks(e).cols[1]===40&&e.h===24})()`));
+assert(run(`(()=>{const e=clone(testTable);setSingleTrackSize(e,'row',1,20);return e.h===32&&tableTracks(e).rows[0]===12&&tableTracks(e).rows[1]===20&&e.w===80})()`));
+assert(run(`(()=>{const e={...clone(testTable),rotation:90},origin=o=>{const p=localDelta(-o.w/2,-o.h/2,-o.rotation);return {x:o.x+o.w/2+p.x,y:o.y+o.h/2+p.y}},before=origin(e);setSingleTrackSize(e,'col',0,60);const after=origin(e);return Math.abs(before.x-after.x)<1e-8&&Math.abs(before.y-after.y)<1e-8})()`));
+assert.throws(()=>run(`setSingleTrackSize(clone(testTable),'row',1,0)`));
+assert(run(`tableHandles(testTable).includes('data-table-action="insert-col"')&&tableHandles(testTable).includes('data-table-action="select-row"')`));
+assert(run(`!buildPrintJob({...sampleDoc,elements:[clone(testTable)]},[{}],1).html.includes('data-table-action')`));
+assert(run(`(()=>{const e=clone(testTable);mutateTableTrack(e,'row',1);applyTextFormat({e,cell:{row:1,col:0,scope:'row'}},'bold',true);return validate(JSON.parse(JSON.stringify({...sampleDoc,elements:[e]}))).elements[0].cellFormats[1][1].bold})()`));
+// Automatic fields use local time, preserve CSV overrides and keep the existing counter.
+assert.equal(run(`withVariableClock(new Date(2026,0,2,3,4,5),()=>val('{{fecha}} {{fecha_iso}} {{hora}} {{fecha_hora}} {{dia}} {{mes}} {{anio}} {{año}} {{numero}}',{},2))`),'02/01/2026 2026-01-02 03:04 02/01/2026 03:04 02 01 2026 2026 0003');
+assert.equal(run(`withVariableClock(new Date(2026,0,2),()=>val('{{fecha}} {{numero}}',{fecha:'Fecha CSV',numero:'9999'},0))`),'Fecha CSV 0001');
+assert.equal(run(`val('{{constructor}} {{desconocido}}')`),'{{constructor}} {{desconocido}}');
+assert(run(`(()=>{const original=automaticFields,seen=[];automaticFields=()=>{seen.push(variableClock);return original()};try{const doc={...sampleDoc,elements:[el('text',0,0,50,20,'{{fecha}} {{hora}} {{numero}}')]};const job=buildPrintJob(doc,[{},{}],2);return job.total===4&&!job.html.includes('{{fecha}}')&&seen.every(value=>value&&value===seen[0])&&variableClock===null}finally{automaticFields=original}})()`));
+assert(run(`(()=>{const date=new Date(2026,0,2);return withVariableClock(date,()=>{try{buildPrintJob({...sampleDoc,elements:[el('text',0,0,20,10,'{{missing}}')]},[{}],1)}catch{}return variableClock===date})&&variableClock===null})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){},remove(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
@@ -172,7 +197,7 @@ const previousQuery=context.document.querySelector;context.document.querySelecto
 run(`applyGrid(true,4)`);assert.equal(gridState['show-grid'],true);assert.equal(gridState['--grid-step'],'20px');
 run(`applyGrid(false,4)`);assert.equal(gridState['show-grid'],false);context.document.querySelector=previousQuery;
 // Exercise the visible toolbar controls with the selected element.
-const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table','#text-turn-left','#text-turn-right','#text-turn-reset'].map(id=>[id,{innerHTML:''}]));
+const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table','#text-turn-left','#text-turn-right','#text-turn-reset','#range-track-size','#range-add-track','#range-delete-track'].map(id=>[id,{innerHTML:''}]));
 const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));
 const verticalButtons=['top','middle','bottom'].map(a=>({dataset:{textValign:a}}));
 controls['#text-toolbar'].querySelectorAll=selector=>selector==='[data-text-valign]'?verticalButtons:alignButtons;
@@ -289,4 +314,21 @@ run(`stepHistory('redo')`);assert.equal(run(`state.elements[0].text`),'Editado')
 run(`history=[];future=[];startInlineEdit(state.elements[0]);activeEditor.input.value='Pendiente';stepHistory('undo')`);
 assert.equal(run(`state.elements[0].text`),'Editado');assert.equal(run(`activeEditor`),null);
 run(`stepHistory('redo')`);assert.equal(run(`state.elements[0].text`),'Pendiente');
-console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical e impresión con papel del sistema.');
+// Range selection exposes shared formatting and exact millimeter sizes in the toolbar.
+run(`let rangeTable=el('table',0,0,80,24,'',{rows:2,cols:2,cells:[['A','B'],['C','D']],header:false});state.elements.push(rangeTable);selectTableRange(rangeTable,'row',1);renderTextToolbar()`);
+assert(controls['#text-toolbar'].innerHTML.includes('Fila 2'));
+controls['#font-points'].onchange({target:{value:'18'}});
+assert(run(`Math.abs(cellTextStyle(rangeTable,1,0).size-18*MM_PER_PT)<1e-9&&Math.abs(cellTextStyle(rangeTable,1,1).size-18*MM_PER_PT)<1e-9&&cellTextStyle(rangeTable,0,0).size===rangeTable.size`));
+controls['#range-track-size'].onchange({target:{value:'22'}});assert.equal(run(`rangeTable.h`),34);assert.equal(run(`tableTracks(rangeTable).rows[0]`),12);
+run(`renderTextToolbar()`);controls['#range-add-track'].onclick();assert.equal(run(`rangeTable.rows`),3);assert.equal(run(`activeCell.row`),2);
+run(`renderTextToolbar()`);controls['#range-delete-track'].onclick();assert.equal(run(`rangeTable.rows`),2);assert.equal(run(`rangeTable.h`),34);
+run(`selectTableRange(rangeTable,'col',1);renderTextToolbar()`);assert(controls['#text-toolbar'].innerHTML.includes('Columna B'));
+controls['#text-ink'].onchange({target:{value:'#ff0000'}});assert.equal(run(`cellTextStyle(rangeTable,0,1).color`),'#ff0000');assert.equal(run(`cellTextStyle(rangeTable,1,1).color`),'#ff0000');assert.equal(run(`cellTextStyle(rangeTable,1,0).color`),'#000000');
+run(`executeTableControl({dataset:{tableAction:'insert-col',index:'1'}},rangeTable,null,null)`);assert.equal(run(`rangeTable.cols`),3);assert.equal(run(`rangeTable.cells[0][2]`),'B');
+run(`executeTableControl({dataset:{tableAction:'select-col',index:'2'}},rangeTable,null,null)`);assert.equal(run(`activeCell.scope`),'col');assert.equal(run(`activeCell.col`),2);
+run(`addElement('date')`);assert.equal(run(`state.elements.find(e=>e.id===selected).text`),'{{fecha}}');
+run(`addElement('time')`);assert.equal(run(`state.elements.find(e=>e.id===selected).text`),'{{hora}}');
+const rangeStorage=new Map(),rangeDocument=JSON.parse(run(`JSON.stringify({name:'Rango',w:100,h:60,bg:'#ffffff',elements:[rangeTable]})`)),rangeId=rangeDocument.elements[0].id;
+rangeStorage.set('labela-current',JSON.stringify(rangeDocument));rangeStorage.set('labela-view',JSON.stringify({selected:rangeId,activeCell:{id:rangeId,row:0,col:1,scope:'col'}}));
+const rangeReload=workspaceHarness(rangeStorage);rangeReload.eval(`restoreWorkspace()`);assert.equal(rangeReload.eval(`activeCell.scope`),'col');assert.equal(rangeReload.eval(`activeCell.col`),1);
+console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical impresión, filas/columnas y campos automáticos.');
