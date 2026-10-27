@@ -128,6 +128,12 @@ assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cel
 assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:e};rotateTextTarget(target,90);rotateTextTarget(target,-90);return e.rotation===0})()`));
 assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:e};for(let i=0;i<4;i++)rotateTextTarget(target,90);return e.rotation===0})()`));
 assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola',{rotation:90}),f=fitTextToSticker(e,{w:60,h:100});return f.rotation===90&&f.w===90&&f.h<=54&&Math.abs(f.x+f.w/2-30)<1e-8&&Math.abs(f.y+f.h/2-50)<1e-8})()`));
+// Overflowing and rotated objects remain inside the editable stage, with room for handles.
+assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO'),doc={w:60,h:100,elements:[e]},b=editingBounds(doc),stage=canvasStage(doc,4);return b.left===-15&&b.right===75&&stage.width===380&&stage.left===70&&stage.left+e.x*4===10})()`));
+assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO',{rotation:90}),b=rotatedElementBounds(e);return Math.abs(b.left-6)<1e-8&&Math.abs(b.top-5)<1e-8&&Math.abs(b.right-54)<1e-8&&Math.abs(b.bottom-95)<1e-8})()`));
+assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-30,-20,120,40,'Fuera',{rotation:35}),el('rect',80,110,20,30)]},k=3,stage=canvasStage(doc,k);return doc.elements.every(e=>{const b=rotatedElementBounds(e);return stage.left+b.left*k>=9.999&&stage.top+b.top*k>=9.999&&stage.left+b.right*k<=stage.width-9.999&&stage.top+b.bottom*k<=stage.height-9.999})})()`));
+assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-15,26,90,48,'TU TEXTO')]},extent=editingBounds(doc),bounds={width:450,height:350},k=fittedScale(extent,bounds);return extent.w*k<=bounds.width&&extent.h*k<=bounds.height})()`));
+assert(run(`(()=>{const doc={...sampleDoc,elements:[el('text',-25,5,90,40,'Fuera')]};return svgDoc(doc).includes('overflow="hidden"')&&svgDoc(doc).includes('translate(-25 5)')&&!buildPrintJob(doc,[{}],1).html.includes('resize-handle')})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;

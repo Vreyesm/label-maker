@@ -112,3 +112,7 @@ El botón **Toda la tabla** permite aplicar el formato a todas las celdas. Los f
 ## Girar texto
 
 La barra tiene botones para girar 90° a izquierda o derecha y un indicador del ángulo que restablece el giro a 0°. En un cuadro de texto se gira el cuadro; en una celda se gira únicamente su texto, manteniendo la cuadrícula. **Toda la tabla** permite girar el texto de todas las celdas. El editor de la celda y el ajuste de tamaño usan sus dimensiones giradas. El giro se conserva al guardar, exportar e imprimir.
+
+## Elementos fuera de la etiqueta
+
+El área de edición muestra el contenido, la selección y los tiradores que sobresalen del sticker. El espacio de trabajo incluye los límites de los elementos girados, con margen para recuperar sus controles. Se pueden mover libremente, incluso con coordenadas negativas, para corregir su posición. **Ajustar a pantalla** incluye esos elementos en el encaje. El borde blanco sigue indicando el área imprimible: SVG e impresión recortan al tamaño físico de la etiqueta.

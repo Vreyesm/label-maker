@@ -19,3 +19,8 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 .table-cell-selection{position:absolute;border:2px solid #357bab;background:transparent;box-sizing:border-box;pointer-events:none;z-index:2}.element.editing-cell .table-cell-selection{display:none}#text-font{width:120px;min-height:38px;padding:7px;font-size:12px}.toolbar-ink{display:inline-flex;align-items:center}.toolbar-ink input{width:38px;height:38px;margin:0;padding:4px;cursor:pointer}#format-entire-table{font-size:10px;padding:8px}.text-toolbar-label{display:inline-block!important;white-space:nowrap}@media(max-width:780px){#text-font{width:100px}.text-toolbar-label{width:100%;font-size:11px}}
 
 .text-rotation{display:flex;gap:4px}.text-rotation button{font-size:11px;min-width:43px;white-space:nowrap}#text-turn-reset{color:#4d654e;font-variant-numeric:tabular-nums}
+
+/* Editing can extend outside the sticker; only exported/printed documents clip to its edges. */
+#canvas-stage{position:relative;overflow:visible;flex-shrink:0;margin-bottom:38px}#board{position:absolute;overflow:visible;outline:1px solid #c5cdc1}#canvas-stage #top-ruler{z-index:0;pointer-events:none}#canvas-stage .dimension{pointer-events:none;white-space:nowrap}#board>.element{overflow:visible}#board>.element.selected{z-index:6}#board>.element.editing,#board>.element.editing-cell{z-index:7}
+
+#canvas-stage{align-self:center;align-self:safe center}
