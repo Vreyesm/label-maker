@@ -135,7 +135,7 @@ assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-30,-20,120,40,'Fuer
 assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-15,26,90,48,'TU TEXTO')]},extent=editingBounds(doc),bounds={width:450,height:350},k=fittedScale(extent,bounds);return extent.w*k<=bounds.width&&extent.h*k<=bounds.height})()`));
 assert(run(`(()=>{const doc={...sampleDoc,elements:[el('text',-25,5,90,40,'Fuera')]};return svgDoc(doc).includes('overflow="hidden"')&&svgDoc(doc).includes('translate(-25 5)')&&!buildPrintJob(doc,[{}],1).html.includes('resize-handle')})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
-const fakeNode={classList:{add(){}},append(){}};
+const fakeNode={classList:{add(){},remove(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
 context.document.querySelector=selector=>selector==='#canvas-area'?{clientWidth:590}:fakeNode;
 assert.equal(run(`fitWidth=true;zoom=1;scale()`),5);
@@ -280,4 +280,13 @@ assert.equal(wr(`safeView({zoom:99,tab:'bad',filter:'bad',csv:{rows:[{a:1}],fiel
 assert.equal(wr(`safeView({tab:'bad'}).tab`),'templates');assert.equal(wr(`safeView({csv:{rows:[{a:1}],fields:['a']}}).csv.rows.length`),0);
 workspace.ctx.localStorage.setItem=()=>{throw Error('quota')};assert.equal(wr(`renameSavedDesign(getLibrary()[0].savedId,'No guardar')`),false);
 wr(`persist()`);assert(workspace.nodes['#saved'].textContent.includes('No se pudo guardar'));
+// Pending inline edits must commit before formatting or history changes replace the document.
+run(`renderLeft=()=>{};activeEditor=null;history=[];future=[];selected=state.elements[0].id;state.elements[0].text='Antes';state.elements[0].bold=false;startInlineEdit(state.elements[0]);activeEditor.input.value='Editado';change(()=>state.elements[0].bold=true)`);
+assert.equal(run(`state.elements[0].text`),'Editado');assert.equal(run(`state.elements[0].bold`),true);assert.equal(run(`history.length`),2);
+run(`stepHistory('undo')`);assert.equal(run(`state.elements[0].text`),'Editado');assert.equal(run(`state.elements[0].bold`),false);
+run(`stepHistory('undo')`);assert.equal(run(`state.elements[0].text`),'Antes');
+run(`stepHistory('redo')`);assert.equal(run(`state.elements[0].text`),'Editado');
+run(`history=[];future=[];startInlineEdit(state.elements[0]);activeEditor.input.value='Pendiente';stepHistory('undo')`);
+assert.equal(run(`state.elements[0].text`),'Editado');assert.equal(run(`activeEditor`),null);
+run(`stepHistory('redo')`);assert.equal(run(`state.elements[0].text`),'Pendiente');
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical e impresión con papel del sistema.');
