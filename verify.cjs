@@ -106,6 +106,18 @@ assert(run(`(()=>{const d={w:100,h:60},b={width:245,height:100},k=fittedScale(d,
 assert(run(`(()=>{const d={w:60,h:150},b={width:400,height:120},k=fittedScale(d,b);return d.w*k<=b.width&&d.h*k<=b.height})()`));
 assert(run(`fittedScale({w:100,h:60},{width:300,height:100},'width')===3`));
 assert(run(`fittedScale({w:100,h:60},{width:1,height:1})>0`));
+// Cell formatting overrides only that cell, including unbolding a header.
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:0,col:0},'bold',false);setCellFormat(e,{row:1,col:1},'color','#ff0000');return !cellTextStyle(e,0,0).bold&&cellTextStyle(e,0,1).bold&&cellTextStyle(e,1,1).color==='#ff0000'&&cellTextStyle(e,1,0).color==='#000000'})()`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'font','Georgia');setCellFormat(e,{row:1,col:1},'size',5);setCellFormat(e,{row:1,col:1},'valign','bottom');resizeTable(e,3,3);return cellTextStyle(e,1,1).font==='Georgia'&&cellTextStyle(e,1,1).size===5&&cellTextStyle(e,1,1).valign==='bottom'&&Object.keys(e.cellFormats[2][2]).length===0&&e.cellFormats[2][1]!==e.cellFormats[2][2]})()`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'font','Georgia');setCellFormat(e,{row:1,col:1},'color','#ff0000');const d=validate(JSON.parse(JSON.stringify({...sampleDoc,elements:[e]})));const svg=svgDoc(d);return svg.includes('font-family="Georgia"')&&svg.includes('fill="#ff0000"')&&d.elements[0].cellFormats[1][1].font==='Georgia'})()`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[{size:-1},{}],[{},{}]]}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[{font:'BadFont'},{}],[{},{}]]}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[{color:'red'},{}],[{},{}]]}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[{},{}]]}]})`));
+assert.throws(()=>run(`validate({...sampleDoc,elements:[{...clone(testTable),cellFormats:[[null,{}],[{},{}]]}]})`));
+assert(run(`(()=>{const e=clone(testTable);setCellFormat(e,{row:1,col:1},'size',8);setCellFormat(e,{row:1,col:1},'color','#ff0000');applyTextFormat({e,cell:null},'size',4);return cellTextStyle(e,1,1).size===4&&cellTextStyle(e,0,0).size===4&&cellTextStyle(e,1,1).color==='#ff0000'})()`));
+assert(run(`(()=>{const e=clone(testTable),w=e.w,h=e.h;fitCellText(e,{row:1,col:1});const style=cellTextStyle(e,1,1);return measureText(e.cells[1][1],style)<=style.w+1e-8&&style.size*1.2<=style.h+1e-8&&e.w===w&&e.h===h})()`));
+assert(run(`(()=>{const e=clone(testTable);applyTextFormat({e,cell:null},'bold',false);return !cellTextStyle(e,0,0).bold&&!cellTextStyle(e,0,1).bold&&!cellTextStyle(e,1,0).bold})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
 const fakeNode={classList:{add(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
@@ -144,7 +156,7 @@ const previousQuery=context.document.querySelector;context.document.querySelecto
 run(`applyGrid(true,4)`);assert.equal(gridState['show-grid'],true);assert.equal(gridState['--grid-step'],'20px');
 run(`applyGrid(false,4)`);assert.equal(gridState['show-grid'],false);context.document.querySelector=previousQuery;
 // Exercise the visible toolbar controls with the selected element.
-const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text'].map(id=>[id,{innerHTML:''}]));
+const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table'].map(id=>[id,{innerHTML:''}]));
 const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));
 const verticalButtons=['top','middle','bottom'].map(a=>({dataset:{textValign:a}}));
 controls['#text-toolbar'].querySelectorAll=selector=>selector==='[data-text-valign]'?verticalButtons:alignButtons;
@@ -172,4 +184,36 @@ run(`let editedTable=state.elements.find(e=>e.id===selected);wireTableProperties
 tableInput.onchange();assert.equal(run(`editedTable.cells[1][1]`),'Editado');
 tableDimension.onchange();assert.equal(run(`editedTable.cols`),3);assert.equal(run(`editedTable.cells[1][1]`),'Editado');
 assert(run(`JSON.parse(JSON.stringify(editedTable)).cells[1][1]==='Editado'`));
+// Selecting a table cell enables the same toolbar and isolates formatting changes.
+run(`activeCell={id:editedTable.id,row:1,col:1};renderTextToolbar()`);
+assert(controls['#text-toolbar'].innerHTML.includes('Celda 2 · 2'));
+controls['#font-points'].onchange({target:{value:'18'}});
+assert(run(`Math.abs(cellTextStyle(editedTable,1,1).size-18*MM_PER_PT)<1e-9`));
+assert(run(`cellTextStyle(editedTable,1,0).size===editedTable.size`));
+run(`renderTextToolbar()`);controls['#text-font'].onchange({target:{value:'Georgia'}});
+run(`renderTextToolbar()`);controls['#text-ink'].onchange({target:{value:'#ff0000'}});
+run(`renderTextToolbar()`);controls['#text-bold'].onclick();
+assert.equal(run(`cellTextStyle(editedTable,1,1).font`),'Georgia');
+assert.equal(run(`cellTextStyle(editedTable,1,1).color`),'#ff0000');
+assert.equal(run(`cellTextStyle(editedTable,1,1).bold`),true);
+alignButtons[1].onclick();verticalButtons[2].onclick();
+assert.equal(run(`cellTextStyle(editedTable,1,1).align`),'center');
+assert.equal(run(`cellTextStyle(editedTable,1,1).valign`),'bottom');
+run(`startInlineEdit(editedTable,undefined,{row:1,col:1})`);
+assert(fakeInput.style.cssText.includes('font-family:Georgia'));
+assert(fakeInput.style.cssText.includes('color:#ff0000'));
+assert(fakeInput.style.cssText.includes('text-align:center'));
+run(`finishInlineEdit(false);renderTextToolbar()`);
+controls['#format-entire-table'].onclick();assert.equal(run(`activeCell`),null);
+run(`renderTextToolbar()`);assert(controls['#text-toolbar'].innerHTML.includes('Tabla completa'));
+controls['#font-points'].onchange({target:{value:'14'}});
+assert(run(`Math.abs(cellTextStyle(editedTable,1,1).size-14*MM_PER_PT)<1e-9`));
+assert(run(`Math.abs(cellTextStyle(editedTable,1,0).size-14*MM_PER_PT)<1e-9`));
+assert.equal(run(`cellTextStyle(editedTable,1,1).color`),'#ff0000');
+// A saved design with cell formats must survive application startup, not just import.
+const persisted=JSON.parse(run(`JSON.stringify({...sampleDoc,name:'Tabla guardada',elements:[editedTable]})`));
+const reloaded=vm.createContext({console,localStorage:{getItem:key=>key==='labela-current'?JSON.stringify(persisted):null},document:{querySelector:()=>null}});
+vm.runInContext(code,reloaded);
+assert.equal(vm.runInContext(`state.name`,reloaded),'Tabla guardada');
+assert.equal(vm.runInContext(`state.elements[0].cellFormats[1][1].color`,reloaded),'#ff0000');
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical e impresión con papel del sistema.');

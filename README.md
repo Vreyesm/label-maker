@@ -102,3 +102,9 @@ En Configuración → Etiqueta, los botones **Horizontal** y **Vertical** interc
 En Plantillas → Básicas puedes elegir **Solo texto** (100 × 60 mm) o **Texto vertical** (60 × 100 mm, con el texto girado 90°). Ambas contienen un único cuadro de texto centrado, editable, con margen y sin códigos ni imágenes. Las medidas y el contenido se pueden cambiar como en los demás diseños.
 
 Las divisiones interiores de una tabla seleccionada se pueden arrastrar para ajustar el ancho de columnas y el alto de filas. Los tamaños relativos se conservan al guardar, redimensionar el cuadro completo, girar, exportar e imprimir. La cuadrícula visible dentro del sticker representa pasos de 5 mm y es únicamente una guía de edición. El color predeterminado de texto y bordes es negro; los diseños con el antiguo tono verde predeterminado se convierten a negro al abrirse.
+
+## Formato por celda
+
+Haz clic en una celda de la tabla para seleccionarla y usa la misma barra del texto: tipografía, tamaño en pt, A−/A+, negrita, color, alineación horizontal, vertical y ajuste de texto al espacio de la celda. El rótulo de la barra indica la fila y columna. Doble clic permite editar el contenido directamente. Cada celda conserva su formato al guardar, redimensionar, exportar e imprimir.
+
+El botón **Toda la tabla** permite aplicar el formato a todas las celdas. Los formatos de celda que se establecen después prevalecen sobre el formato base. Al aplicar una propiedad a toda la tabla se eliminan las excepciones de esa propiedad. El ajuste de texto de una tabla calcula el tamaño para cada celda, sin cambiar las dimensiones de sus filas o columnas.

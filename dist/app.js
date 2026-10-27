@@ -1,7 +1,8 @@
 'use strict';
 const $=s=>document.querySelector(s),clone=x=>JSON.parse(JSON.stringify(x));
 const esc=x=>String(x??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&apos;'}[c]));
-let fitWidth=false, fitScreen=false, activeEditor=null;
+const CELL_FORMAT_KEYS=['size','bold','align','valign','font','color'];
+let fitWidth=false, fitScreen=false, activeEditor=null, activeCell=null;
 let seq=0;const el=(type,x,y,w,h,text='',extra={})=>({id:++seq,type,x,y,w,h,text,size:3,color:'#000000',bold:false,align:'left',rotation:0,...extra});
 const templates=[
 {id:'basic-text',name:'Solo texto',category:'Básicas',w:100,h:60,desc:'Un texto centrado, sin otros elementos',elements:()=>[el('text',5,6,90,48,'TU TEXTO',{size:12,bold:true,align:'center',valign:'middle'})]},
@@ -88,6 +89,55 @@ function textVerticalOffset(e,text){
  const free=Math.max(0,e.h-textLines(e,text).length*e.size*1.2);
  return e.valign==='middle'?free/2:e.valign==='bottom'?free:0;
 }
+function selectedTableCell(e){return activeCell&&activeCell.id===e.id&&activeCell.row>=0&&activeCell.row<e.rows&&activeCell.col>=0&&activeCell.col<e.cols?activeCell:null}
+function cellTextStyle(e,row,col){
+ const box=tableCellBox(e,row,col);
+ return {...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:!!(e.bold||(e.header&&row===0)),align:e.align||'left',valign:e.valign||'middle',...(e.cellFormats?.[row]?.[col]||{})};
+}
+function setCellFormat(e,cell,key,value){
+ if(!CELL_FORMAT_KEYS.includes(key))throw Error('Formato de celda no válido.');
+ if(!e.cellFormats)e.cellFormats=Array.from({length:e.rows},()=>Array.from({length:e.cols},()=>({})));
+ e.cellFormats[cell.row][cell.col][key]=value;
+}
+function formattingTarget(){
+ const e=state.elements.find(e=>e.id===selected);if(!e||!['text','table'].includes(e.type))return null;
+ const cell=e.type==='table'?selectedTableCell(e):null;
+ return {e,cell,style:cell?cellTextStyle(e,cell.row,cell.col):e};
+}
+function applyTextFormat(target,key,value){
+ if(target.cell)setCellFormat(target.e,target.cell,key,value);
+ else{
+  if(key==='size'&&target.e.type==='text')setTextSize(target.e,value/MM_PER_PT);else target.e[key]=value;
+  if(target.e.type==='table'){if(key==='bold'){for(let r=0;r<target.e.rows;r++)for(let c=0;c<target.e.cols;c++)setCellFormat(target.e,{row:r,col:c},key,value)}else if(target.e.cellFormats)target.e.cellFormats.forEach(row=>row.forEach(format=>delete format[key]))}
+ }
+}
+function fitCellText(e,cell){
+ const style=cellTextStyle(e,cell.row,cell.col),lines=val(e.cells[cell.row][cell.col]).split('\n'),width=Math.max(...lines.map(line=>measureText(line,style)));
+ if(!width)return;
+ setCellFormat(e,cell,'size',Math.min(style.size*style.w/width,style.h/(1.2*lines.length)));
+}
+function cellSelectionMarkup(e){
+ const cell=selectedTableCell(e);if(!cell||selected!==e.id)return '';const box=tableCellBox(e,cell.row,cell.col);
+ return `<span class="table-cell-selection" style="left:${box.x/e.w*100}%;top:${box.y/e.h*100}%;width:${box.w/e.w*100}%;height:${box.h/e.h*100}%" aria-hidden="true"></span>`;
+}
+function cellFromEvent(e,node,event){
+ const value=event.target.closest('[data-cell]')?.dataset.cell;if(value){const [row,col]=value.split(',').map(Number);return {row,col}}
+ const rect=node.getBoundingClientRect(),k=scale(),point=localDelta((event.clientX-(rect.left+rect.width/2))/k,(event.clientY-(rect.top+rect.height/2))/k,e.rotation||0);
+ return tableCellAt(e,point.x+e.w/2,point.y+e.h/2);
+}
+function validateCellFormats(e){
+ if(e.cellFormats===undefined)return;
+ if(!Array.isArray(e.cellFormats)||e.cellFormats.length!==e.rows||!e.cellFormats.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(format=>format&&typeof format==='object'&&!Array.isArray(format)&&Object.entries(format).every(([key,value])=>{
+  if(!CELL_FORMAT_KEYS.includes(key))return false;
+  if(key==='size')return Number.isFinite(value)&&value>0&&value<=1000;
+  if(key==='bold')return typeof value==='boolean';
+  if(key==='align')return ['left','center','right','justify'].includes(value);
+  if(key==='valign')return ['top','middle','bottom'].includes(value);
+  if(key==='font')return ['Arial','Georgia','Courier New'].includes(value);
+  return typeof value==='string'&&/^#[0-9a-f]{6}$/i.test(value);
+ }))))throw Error('Formatos de celda inválidos.');
+ e.cellFormats.forEach(row=>row.forEach(format=>{if(format.color?.toLowerCase()==='#182c21')format.color='#000000'}));
+}
 function tableTracks(e){
  const tracks=(weights,count,total)=>{const values=Array.isArray(weights)&&weights.length===count?weights:Array(count).fill(1),sum=values.reduce((a,b)=>a+b,0);return values.map(v=>v*total/sum)};
  return {cols:tracks(e.colSizes,e.cols,e.w),rows:tracks(e.rowSizes,e.rows,e.h)};
@@ -99,6 +149,7 @@ function tableCellBox(e,row,col){
 function resizeTable(e,rowCount,colCount){
  if(!Number.isInteger(rowCount)||!Number.isInteger(colCount)||rowCount<1||rowCount>10||colCount<1||colCount>10)throw Error('La tabla admite entre 1 y 10 filas y columnas.');
  for(const [key,count] of [['rowSizes',rowCount],['colSizes',colCount]])if(e[key]){const previous=e[key],average=previous.reduce((a,b)=>a+b,0)/previous.length;e[key]=Array.from({length:count},(_,i)=>previous[i]??average)}
+ if(e.cellFormats)e.cellFormats=Array.from({length:rowCount},(_,r)=>Array.from({length:colCount},(_,c)=>({...e.cellFormats?.[r]?.[c]})));
  e.cells=Array.from({length:rowCount},(_,r)=>Array.from({length:colCount},(_,c)=>e.cells?.[r]?.[c]??''));e.rows=rowCount;e.cols=colCount;
 }
 function resizeTableTrack(e,axis,index,delta,original){
@@ -108,7 +159,7 @@ function resizeTableTrack(e,axis,index,delta,original){
 }
 function tableSVG(e,row,index){
  return e.cells.map((cells,r)=>cells.map((content,c)=>{
-  const box=tableCellBox(e,r,c),cell={...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:e.bold||(e.header&&r===0),valign:e.valign||'middle'};
+  const box=tableCellBox(e,r,c),cell=cellTextStyle(e,r,c);
   return `<g data-cell="${r},${c}" transform="translate(${box.x} ${box.y})"><rect width="${box.w}" height="${box.h}" fill="${e.header&&r===0?'#f1f1f1':'#ffffff'}" stroke="${esc(e.color)}" stroke-width=".25"/><g transform="translate(${box.pad} ${box.pad})">${textSVG(cell,val(content,row,index))}</g></g>`;
  }).join('')).join('');
 }
@@ -159,7 +210,7 @@ function viewBounds(){
 function fittedScale(doc,bounds,mode='screen'){const width=bounds.width/doc.w;return Math.max(.001,mode==='width'?width:Math.min(width,bounds.height/doc.h))}
 function scale(){const bounds=viewBounds();return (fitWidth?fittedScale(state,bounds,'width'):fitScreen?fittedScale(state,bounds):Math.min(5.1,fittedScale(state,bounds)))*zoom}
 function applyGrid(visible,k=scale()){$('#board').classList.toggle('show-grid',!!visible);$('#board').style.setProperty('--grid-step',`${5*k}px`)}
-function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg>${e.type==='table'?tableHandles(e):''}<span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
+function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg>${e.type==='table'?tableHandles(e)+cellSelectionMarkup(e):''}<span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
 function fitTextToSticker(e,doc,row={},index=0){
  const lines=val(e.text,row,index).split('\n'),longest=Math.max(...lines.map(t=>measureText(t,e)));
  if(!longest)return null;
@@ -192,12 +243,12 @@ function finishInlineEdit(commit=true,redraw=true){
  if(redraw)render();else{const node=$(`[data-id="${e.id}"]`);if(node){node.classList.remove('editing','editing-cell');node.innerHTML=elementContent(e)}}
 }
 function startInlineEdit(e,initial,cell=null){
- if(e.type!=='text'&&!(e.type==='table'&&cell))return;finishInlineEdit();selected=e.id;render();
+ if(e.type!=='text'&&!(e.type==='table'&&cell))return;finishInlineEdit();selected=e.id;activeCell=cell?{id:e.id,...cell}:null;render();
  const node=$(`[data-id="${e.id}"]`),k=scale(),input=document.createElement('textarea'),box=cell?tableCellBox(e,cell.row,cell.col):null;
- const style=cell?{...e,w:box.w-2*box.pad,h:box.h-2*box.pad,bold:e.bold||(e.header&&cell.row===0),valign:e.valign||'middle'}:e;
+ const style=cell?cellTextStyle(e,cell.row,cell.col):e;
  const original=cell?e.cells[cell.row][cell.col]:e.text;
  input.className=cell?'inline-text inline-cell':'inline-text';input.setAttribute('aria-label',cell?`Editar fila ${cell.row+1}, columna ${cell.col+1} en el lienzo`:'Editar texto en el lienzo');input.value=initial===undefined?original:initial;
- input.style.cssText=`font-family:${e.font||'Arial'};font-size:${e.size*k}px;font-weight:${style.bold?700:400};line-height:1.2;color:${e.color};text-align:${e.align||'left'}`;
+ input.style.cssText=`font-family:${style.font||'Arial'};font-size:${style.size*k}px;font-weight:${style.bold?700:400};line-height:1.2;color:${style.color};text-align:${style.align||'left'}`;
  if(box){input.style.inset='auto';input.style.left=(box.x+box.pad)*k+'px';input.style.top=(box.y+box.pad)*k+'px';input.style.width=style.w*k+'px';input.style.height=style.h*k+'px'}
  node.classList.add(cell?'editing-cell':'editing');node.append(input);activeEditor={input,e,original,cell};
  input.onpointerdown=ev=>ev.stopPropagation();input.ondblclick=ev=>ev.stopPropagation();
@@ -232,40 +283,45 @@ function verticalAlignmentIcon(align){
  return `<svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3 2h18M3 22h18" opacity=".4"/><path d="M5 ${y}h14M5 ${y+4}h14"/></svg>`;
 }
 function renderTextToolbar(){
- const e=state.elements.find(e=>e.id===selected),root=$('#text-toolbar'),disabled=!e||e.type!=='text';
- root.innerHTML=`<span class="text-toolbar-label">Texto</span><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(e)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&e.bold}" ${disabled?'disabled':''}>B</button><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(e.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(e.valign||'top')===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="Ajustar texto al ancho del sticker con 5% de margen a cada lado" ${disabled?'disabled':''}>↔ Ajustar texto</button>${disabled?'<span class="text-toolbar-help">Selecciona un texto</span>':''}`;
- root.onpointerdown=()=>{if(activeEditor){const current=activeEditor.e;finishInlineEdit(true,false);const node=$(`[data-id="${current.id}"]`);node.classList.remove('editing','editing-cell');node.innerHTML=elementContent(current)}};
+ const target=formattingTarget(),e=target?.e,cell=target?.cell,style=target?.style,root=$('#text-toolbar'),disabled=!target;
+ const label=cell?`Celda ${cell.row+1} · ${cell.col+1}`:e?.type==='table'?'Tabla completa':'Texto';
+ root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
+ root.onpointerdown=()=>{if(activeEditor)finishInlineEdit(true,false)};
  if(disabled)return;
- $('#font-smaller').onclick=()=>change(()=>setTextSize(e,Math.max(1,Math.round(textSizeInPoints(e))-1)));
- $('#font-larger').onclick=()=>change(()=>setTextSize(e,Math.min(1000,Math.round(textSizeInPoints(e))+1)));
- $('#font-points').onchange=event=>{const points=+event.target.value;if(!Number.isFinite(points)||points<1||points>1000){toast('El tamaño debe estar entre 1 y 1000 pt.');renderTextToolbar();return}change(()=>setTextSize(e,points))};
- $('#text-bold').onclick=()=>change(()=>e.bold=!e.bold);
- root.querySelectorAll('[data-text-align]').forEach(button=>button.onclick=()=>change(()=>e.align=button.dataset.textAlign));
- root.querySelectorAll('[data-text-valign]').forEach(button=>button.onclick=()=>change(()=>e.valign=button.dataset.textValign));
- $('#toolbar-fit-text').onclick=()=>{const fitted=fitTextToSticker(e,state,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')};
+ const set=(key,value)=>change(()=>applyTextFormat(target,key,value));
+ $('#text-font').onchange=event=>set('font',event.target.value);
+ $('#text-ink').onchange=event=>set('color',event.target.value);
+ $('#font-smaller').onclick=()=>set('size',Math.max(1,Math.round(textSizeInPoints(style))-1)*MM_PER_PT);
+ $('#font-larger').onclick=()=>set('size',Math.min(1000,Math.round(textSizeInPoints(style))+1)*MM_PER_PT);
+ $('#font-points').onchange=event=>{const points=+event.target.value;if(!Number.isFinite(points)||points<1||points>1000){toast('El tamaño debe estar entre 1 y 1000 pt.');renderTextToolbar();return}set('size',points*MM_PER_PT)};
+ $('#text-bold').onclick=()=>set('bold',!style.bold);
+ root.querySelectorAll('[data-text-align]').forEach(button=>button.onclick=()=>set('align',button.dataset.textAlign));
+ root.querySelectorAll('[data-text-valign]').forEach(button=>button.onclick=()=>set('valign',button.dataset.textValign));
+ if(cell)$('#format-entire-table').onclick=()=>{activeCell=null;render()};
+ $('#toolbar-fit-text').onclick=()=>{
+  if(e.type==='table')change(()=>{if(cell)fitCellText(e,cell);else for(let r=0;r<e.rows;r++)for(let c=0;c<e.cols;c++)fitCellText(e,{row:r,col:c})});
+  else{const fitted=fitTextToSticker(e,state,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')}
+ };
 }
-function renderProperties(){renderTextToolbar();const e=state.elements.find(e=>e.id===selected);$('#properties').innerHTML=e?`<section><div class="section-label">${{text:'TEXTO',barcode:'CÓDIGO DE BARRAS',rect:'RECTÁNGULO',image:'IMAGEN',line:'LÍNEA',table:'TABLA'}[e.type]} <span style="float:right">SELECCIONADO</span></div>${['text','barcode'].includes(e.type)?`<label>Contenido<textarea data-prop="text" rows="${e.type==='text'?3:2}">${esc(e.text)}</textarea></label>`:''}${e.type==='barcode'?`<label class="field">Simbología<select data-prop="format"><option value="ean13" ${e.format!=='code39'?'selected':''}>EAN-13</option><option value="code39" ${e.format==='code39'?'selected':''}>Code 39</option></select></label><p class="small">EAN-13: 12 dígitos calculan el verificador. Code 39: letras y números.</p>`:''}<div class="two"><label>X (mm)<input data-prop="x" type="number" step="0.5" value="${e.x}"></label><label>Y (mm)<input data-prop="y" type="number" step="0.5" value="${e.y}"></label></div><div class="two"><label>Ancho (mm)<input data-prop="w" type="number" min=".5" step=".5" value="${e.w}"></label><label>Alto (mm)<input data-prop="h" type="number" min=".2" step=".5" value="${e.h}"></label></div>${e.type==='table'?tableProperties(e):''}${e.type==='text'?`<button class="wide" id="edit-canvas">✎ Editar en el lienzo</button><label class="field">Tipografía<select data-prop="font">${['Arial','Georgia','Courier New'].map(f=>`<option ${e.font===f?'selected':''}>${f}</option>`).join('')}</select></label><label class="field"><input type="checkbox" data-prop="bold" ${e.bold?'checked':''}> Negrita</label>`:''}<div class="two"><label>Rotación °<input data-prop="rotation" type="number" min="-360" max="360" value="${e.rotation||0}"></label><label>Color<input type="color" data-prop="color" value="${e.color}"></label></div>${e.type==='rect'?`<label><input type="checkbox" data-prop="fill" ${e.fill?'checked':''}> Rellenar figura</label>`:''}<div class="two"><button id="center-element" title="Centrar el cuadro horizontal y verticalmente en la etiqueta">Centrar en etiqueta</button><button id="front-element">Al frente</button></div></section>`:`<section><div class="section-label">PROPIEDADES</div><p class="help">Selecciona un elemento de la etiqueta para personalizarlo.</p><button class="wide" id="add-shortcut">＋ Añadir elemento</button></section>`;$('#properties').querySelectorAll('[data-prop]').forEach(input=>input.onchange=()=>{let key=input.dataset.prop,v=input.type==='checkbox'?input.checked:input.type==='number'?+input.value:input.value;if(input.type==='number'&&!Number.isFinite(v))return;if(['w','h','size'].includes(key))v=Math.max(.2,v);change(()=>e[key]=v)});if(e){if(e.type==='table')wireTableProperties(e);$('#properties').querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>change(()=>e.align=b.dataset.align));if(e.type==='text'){$('#edit-canvas').onclick=()=>startInlineEdit(e)};$('#center-element').onclick=()=>change(()=>Object.assign(e,centeredPosition(e,state.w,state.h)));$('#front-element').onclick=()=>change(()=>{state.elements=state.elements.filter(x=>x!==e);state.elements.push(e)})}else $('#add-shortcut').onclick=()=>{tab='elements';renderLeft()}}
+function renderProperties(){renderTextToolbar();const e=state.elements.find(e=>e.id===selected);$('#properties').innerHTML=e?`<section><div class="section-label">${{text:'TEXTO',barcode:'CÓDIGO DE BARRAS',rect:'RECTÁNGULO',image:'IMAGEN',line:'LÍNEA',table:'TABLA'}[e.type]} <span style="float:right">SELECCIONADO</span></div>${['text','barcode'].includes(e.type)?`<label>Contenido<textarea data-prop="text" rows="${e.type==='text'?3:2}">${esc(e.text)}</textarea></label>`:''}${e.type==='barcode'?`<label class="field">Simbología<select data-prop="format"><option value="ean13" ${e.format!=='code39'?'selected':''}>EAN-13</option><option value="code39" ${e.format==='code39'?'selected':''}>Code 39</option></select></label><p class="small">EAN-13: 12 dígitos calculan el verificador. Code 39: letras y números.</p>`:''}<div class="two"><label>X (mm)<input data-prop="x" type="number" step="0.5" value="${e.x}"></label><label>Y (mm)<input data-prop="y" type="number" step="0.5" value="${e.y}"></label></div><div class="two"><label>Ancho (mm)<input data-prop="w" type="number" min=".5" step=".5" value="${e.w}"></label><label>Alto (mm)<input data-prop="h" type="number" min=".2" step=".5" value="${e.h}"></label></div>${e.type==='table'?tableProperties(e):''}${e.type==='text'?`<button class="wide" id="edit-canvas">✎ Editar en el lienzo</button><label class="field">Tipografía<select data-prop="font">${['Arial','Georgia','Courier New'].map(f=>`<option ${e.font===f?'selected':''}>${f}</option>`).join('')}</select></label><label class="field"><input type="checkbox" data-prop="bold" ${e.bold?'checked':''}> Negrita</label>`:''}<div class="two"><label>Rotación °<input data-prop="rotation" type="number" min="-360" max="360" value="${e.rotation||0}"></label><label>Color<input type="color" data-prop="color" value="${e.color}"></label></div>${e.type==='rect'?`<label><input type="checkbox" data-prop="fill" ${e.fill?'checked':''}> Rellenar figura</label>`:''}<div class="two"><button id="center-element" title="Centrar el cuadro horizontal y verticalmente en la etiqueta">Centrar en etiqueta</button><button id="front-element">Al frente</button></div></section>`:`<section><div class="section-label">PROPIEDADES</div><p class="help">Selecciona un elemento de la etiqueta para personalizarlo.</p><button class="wide" id="add-shortcut">＋ Añadir elemento</button></section>`;$('#properties').querySelectorAll('[data-prop]').forEach(input=>input.onchange=()=>{let key=input.dataset.prop,v=input.type==='checkbox'?input.checked:input.type==='number'?+input.value:input.value;if(input.type==='number'&&!Number.isFinite(v))return;if(['w','h','size'].includes(key))v=Math.max(.2,v);change(()=>{if(e.type==='table'&&CELL_FORMAT_KEYS.includes(key))applyTextFormat({e,cell:null},key,v);else e[key]=v})});if(e){if(e.type==='table')wireTableProperties(e);$('#properties').querySelectorAll('[data-align]').forEach(b=>b.onclick=()=>change(()=>e.align=b.dataset.align));if(e.type==='text'){$('#edit-canvas').onclick=()=>startInlineEdit(e)};$('#center-element').onclick=()=>change(()=>Object.assign(e,centeredPosition(e,state.w,state.h)));$('#front-element').onclick=()=>change(()=>{state.elements=state.elements.filter(x=>x!==e);state.elements.push(e)})}else $('#add-shortcut').onclick=()=>{tab='elements';renderLeft()}}
 function addElement(type){if(type==='image'){pickFile('image/png,image/jpeg,image/webp',file=>{if(file.size>3e6)return toast('Usa una imagen de hasta 3 MB.');const reader=new FileReader;reader.onload=()=>{change(()=>{let e=el('image',5,5,25,20,'',{src:reader.result});state.elements.push(e);selected=e.id})};reader.readAsDataURL(file)});return}change(()=>{const e=type==='table'?el('table',state.w*.05,state.h*.05,state.w*.9,Math.min(30,state.h*.7),'',{rows:3,cols:2,header:true,cells:[['Campo','Valor'],['Lote','001'],['Producto','Descripción']],size:Math.min(3,state.h*.7/4.5),valign:'middle'}):type==='text'?el('text',5,5,Math.min(65,state.w-10),8,'Tu texto aquí',{size:4}):type==='number'?el('text',5,5,30,7,'N.º {{numero}}',{size:4}):type==='barcode'?el('barcode',5,5,Math.min(50,state.w-10),15,'7501234567893'):type==='line'?el('line',5,5,Math.min(60,state.w-10),.4):el('rect',5,5,25,15);state.elements.push(e);selected=e.id})}
 function pickFile(accept,callback){const input=$('#file');input.accept=accept;input.value='';input.onchange=()=>{if(input.files[0])callback(input.files[0])};input.click()}
 function download(name,content,type){let url=URL.createObjectURL(new Blob([content],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000)}
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const delimiter=(text.split('\n')[0].match(/;/g)||[]).length>(text.split('\n')[0].match(/,/g)||[]).length?';':',';let result=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);result.push(row);row=[];cell=''}else cell+=c}if(quoted)throw Error('El CSV contiene comillas sin cerrar.');if(cell||row.length){row.push(cell);result.push(row)}return result}
-function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.color.toLowerCase()==='#182c21')e.color='#000000';e.id=i+1});return d}
+function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.type==='table')validateCellFormats(e);if(e.color.toLowerCase()==='#182c21')e.color='#000000';e.id=i+1});return d}
 $('#board').ondblclick=event=>{
  const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle,[data-table-axis],.inline-text'))return;
  const e=state.elements.find(e=>e.id===+node.dataset.id);
- if(e.type==='table'){
-  const rect=node.getBoundingClientRect(),k=scale(),point=localDelta((event.clientX-(rect.left+rect.width/2))/k,(event.clientY-(rect.top+rect.height/2))/k,e.rotation||0);
-  const target=event.target.closest('[data-cell]')?.dataset.cell,cell=target?{row:+target.split(',')[0],col:+target.split(',')[1]}:tableCellAt(e,point.x+e.w/2,point.y+e.h/2);
-  startInlineEdit(e,undefined,cell);
+ if(e.type==='table'){startInlineEdit(e,undefined,cellFromEvent(e,node,event));
  }else startInlineEdit(e);
 };
 $('#board').onpointerdown=event=>{
  if(event.button!==0||event.target.closest('.inline-text'))return;
  const node=event.target.closest('.element'),track=event.target.closest('[data-table-axis]'),axis=track?.dataset.tableAxis,index=+(track?.dataset.track||0),resizing=!!event.target.closest('.resize-handle');
  finishInlineEdit(true,false);
- if(!node){selected=null;render();return}
+ if(!node){selected=null;activeCell=null;render();return}
  const e=state.elements.find(e=>e.id===+node.dataset.id);
- selected=e.id;document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();
+ selected=e.id;if(e.type==='table'&&!track&&!resizing)activeCell={id:e.id,...cellFromEvent(e,node,event)};else if(e.type!=='table')activeCell=null;document.querySelectorAll('.table-cell-selection').forEach(mark=>mark.remove());if(e.type==='table')node.insertAdjacentHTML('beforeend',cellSelectionMarkup(e));document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();
  if(track&&e.type==='table'){beginTableTrackResize(event,node,e,axis,index);return}
  const start={px:event.clientX,py:event.clientY,x:e.x,y:e.y,w:e.w,h:e.h},k=scale();let moved=false;
  node.setPointerCapture(event.pointerId);
