@@ -243,4 +243,41 @@ const reloaded=vm.createContext({console,localStorage:{getItem:key=>key==='label
 vm.runInContext(code,reloaded);
 assert.equal(vm.runInContext(`state.name`,reloaded),'Tabla guardada');
 assert.equal(vm.runInContext(`state.elements[0].cellFormats[1][1].color`,reloaded),'#ff0000');
+// Saved designs keep stable identities across rename, autosave, copies and reloads.
+const workspaceStorage=new Map();
+const libraryFixture={name:'Mi etiqueta',w:60,h:100,bg:'#ffffff',template:'basic-text',elements:[{id:777,type:'text',x:5,y:5,w:50,h:20,text:'BODEGA',size:6,color:'#000000',bold:false,align:'center',rotation:0}]};
+workspaceStorage.set('labela-current',JSON.stringify(libraryFixture));workspaceStorage.set('labela-library',JSON.stringify([libraryFixture]));
+workspaceStorage.set('labela-view',JSON.stringify({tab:'library',filter:'Mis diseños',query:'bodega',zoom:1.4,fitWidth:false,fitScreen:false,grid:false,selected:777,scroll:{canvas:{top:120,left:30},left:{top:70,left:0},right:{top:140,left:0}},copies:2,rotateDesign:false,csv:{rows:[{producto:'Lejía'}],fields:['producto'],record:0}}));
+function workspaceHarness(storage){
+ const nodes={'#saved':{textContent:''},'#grid':{checked:true},'#copies':{value:1},'#rotate-design':{checked:true},'#canvas-area':{scrollTop:0,scrollLeft:0,clientWidth:590,clientHeight:500},'.left':{scrollTop:0,scrollLeft:0},'.right':{scrollTop:0,scrollLeft:0},'#docname':{value:''}};
+ const ctx=vm.createContext({console,setTimeout:()=>1,clearTimeout(){},localStorage:{getItem:key=>storage.get(key)??null,setItem:(key,value)=>storage.set(key,value)},document:{querySelector:key=>nodes[key]||null,querySelectorAll:()=>[],createElement:()=>({getContext:()=>null})}});
+ vm.runInContext(code,ctx);vm.runInContext(`render=()=>{};renderLeft=()=>{};toast=()=>{};`,ctx);
+ return {ctx,nodes,eval:script=>vm.runInContext(script,ctx)};
+}
+const workspace=workspaceHarness(workspaceStorage),wr=workspace.eval;
+assert.equal(wr(`state.elements[0].id`),777); // Existing IDs must survive reload so selection restores correctly.
+wr(`let restored=restoreWorkspace();restoreScroll(restored)`);
+assert.equal(wr(`state.name`),'Mi etiqueta');assert.equal(wr(`state.savedId`),'legacy-0');
+assert.equal(wr(`tab`),'library');assert.equal(wr(`filter`),'Mis diseños');assert.equal(wr(`zoom`),1.4);assert.equal(wr(`selected`),777);
+assert.equal(workspace.nodes['#grid'].checked,false);assert.equal(workspace.nodes['#copies'].value,2);assert.equal(workspace.nodes['#rotate-design'].checked,false);
+assert.equal(workspace.nodes['#canvas-area'].scrollTop,120);assert.equal(workspace.nodes['#canvas-area'].scrollLeft,30);assert.equal(workspace.nodes['.right'].scrollTop,140);
+assert.equal(wr(`rows[0].producto`),'Lejía');assert.equal(wr(`csvFields[0]`),'producto');
+assert(wr(`renameSavedDesign('legacy-0','Bodega aseo')`));assert.equal(wr(`state.name`),'Bodega aseo');assert.equal(wr(`getLibrary()[0].name`),'Bodega aseo');
+wr(`state.elements[0].text='Nuevo texto';persist()`);assert.equal(wr(`getLibrary()[0].elements[0].text`),'Nuevo texto');assert.equal(wr(`getLibrary().length`),1);
+wr(`renameCurrentDesign(' <Bodega & aseo> ')`);assert.equal(wr(`getLibrary()[0].name`),'<Bodega & aseo>');
+assert(wr(`savedTemplateCards(getLibrary()).includes('&lt;Bodega &amp; aseo&gt;')`));assert(wr(`savedTemplateCards(getLibrary()).includes('data-saved-template="legacy-0"')`));
+wr(`saveLibraryDesign()`);assert.equal(wr(`getLibrary().length`),1);
+wr(`saveLibraryDesign(true)`);assert.equal(wr(`getLibrary().length`),2);assert.notEqual(wr(`state.savedId`),'legacy-0');
+wr(`renameSavedDesign('legacy-0','Original')`);assert.equal(wr(`state.name`),'<Bodega & aseo>');assert.equal(wr(`getLibrary()[0].name`),'Original');
+assert.equal(wr(`renameSavedDesign('legacy-0','   ')`),false);assert.equal(wr(`getLibrary()[0].name`),'Original');
+wr(`loadLibraryDesign('legacy-0')`);assert.equal(wr(`state.name`),'Original');assert.equal(wr(`state.savedId`),'legacy-0');assert.equal(wr(`fitScreen`),true);assert.equal(workspace.nodes['#canvas-area'].scrollTop,0);
+wr(`selected=777;tab='elements';zoom=1.7;fitScreen=false;query='Último';persist()`);
+const reopened=workspaceHarness(workspaceStorage);reopened.eval(`let restored=restoreWorkspace();restoreScroll(restored)`);
+assert.equal(reopened.eval(`state.name`),'Original');assert.equal(reopened.eval(`state.savedId`),'legacy-0');assert.equal(reopened.eval(`state.elements[0].text`),'Nuevo texto');
+assert.equal(reopened.eval(`tab`),'elements');assert.equal(reopened.eval(`zoom`),1.7);assert.equal(reopened.eval(`query`),'Último');assert.equal(reopened.eval(`selected`),777);
+wr(`deleteLibraryDesign('legacy-0')`);assert.equal(wr(`state.savedId`),undefined);assert.equal(wr(`state.name`),'Original');assert.equal(wr(`getLibrary().length`),1);
+assert.equal(wr(`safeView({zoom:99,tab:'bad',filter:'bad',csv:{rows:[{a:1}],fields:['a']}}).zoom`),1);
+assert.equal(wr(`safeView({tab:'bad'}).tab`),'templates');assert.equal(wr(`safeView({csv:{rows:[{a:1}],fields:['a']}}).csv.rows.length`),0);
+workspace.ctx.localStorage.setItem=()=>{throw Error('quota')};assert.equal(wr(`renameSavedDesign(getLibrary()[0].savedId,'No guardar')`),false);
+wr(`persist()`);assert(workspace.nodes['#saved'].textContent.includes('No se pudo guardar'));
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical e impresión con papel del sistema.');

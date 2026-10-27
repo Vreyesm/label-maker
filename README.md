@@ -62,7 +62,7 @@ Abre http://localhost:8080. Verificación lógica: `node verify.cjs`.
 
 ## Datos y uso
 
-Los diseños se guardan en localStorage, por navegador y dominio. Al borrar los datos del navegador se pierden. Usa **Guardar** para descargar copias JSON. Los CSV solo permanecen en memoria y se deben volver a importar después de recargar. Las imágenes se incluyen dentro del diseño. No se envían datos a un servidor.
+Los diseños se guardan en localStorage, por navegador y dominio. Al borrar los datos del navegador se pierden. Usa **Guardar** para descargar copias JSON. Los datos CSV y la vista de trabajo se conservan localmente para restaurar la sesión. Las imágenes se incluyen dentro del diseño. No se envían datos a un servidor.
 
 La impresión requiere elegir escala 100%, papel con las dimensiones de la etiqueta, sin márgenes ni encabezados. El controlador debe admitir el formato. Comprueba una muestra antes de imprimir un lote y verifica la lectura de códigos con tu escáner.
 
@@ -116,3 +116,11 @@ La barra tiene botones para girar 90° a izquierda o derecha y un indicador del 
 ## Elementos fuera de la etiqueta
 
 El área de edición muestra el contenido, la selección y los tiradores que sobresalen del sticker. El espacio de trabajo incluye los límites de los elementos girados, con margen para recuperar sus controles. Se pueden mover libremente, incluso con coordenadas negativas, para corregir su posición. **Ajustar a pantalla** incluye esos elementos en el encaje. El borde blanco sigue indicando el área imprimible: SVG e impresión recortan al tamaño físico de la etiqueta.
+
+## Diseños guardados y sesión
+
+- En **Mis diseños**, edita el nombre directamente en su campo. El nombre de la cabecera también actualiza el diseño guardado que está abierto.
+- Los diseños guardados aparecen en **Plantillas → Mis diseños**, con su nombre y miniatura, y se incluyen en la búsqueda de plantillas.
+- Una vez guardado un diseño, sus cambios se actualizan en esa misma entrada. **Guardar como copia** crea una entrada independiente.
+- Al volver a abrir la página en el mismo navegador y dominio, se restaura el diseño de trabajo y su última vista: pestaña, filtro, zoom/encaje, cuadrícula, desplazamiento, selección y datos CSV. Los cambios de edición en curso se confirman al salir de la página.
+- El guardado es local al navegador. Para mover diseños entre dispositivos o dominios, descarga e importa el archivo JSON. Al importar un archivo se abre como una copia de trabajo independiente.
