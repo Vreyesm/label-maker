@@ -145,3 +145,9 @@ Escribe estos campos en textos o celdas; no requieren CSV:
 | `{{numero}}` | Consecutivo existente: 0001, 0002… |
 
 Elementos incluye botones para insertar Fecha actual y Hora actual. El lote de impresión toma una sola fecha/hora al generarse para que todas sus etiquetas sean consistentes. Si el CSV contiene una columna con el mismo nombre que un campo de fecha/hora, se usa su valor; `{{numero}}` conserva su comportamiento de consecutivo reservado.
+
+## Editor en teléfonos y tablets
+
+Hasta 1050 px, el lienzo ocupa todo el ancho y la altura disponible. Las pestañas abren las herramientas en un panel modal; **Listo** vuelve al diseño. **Ajustes** permanece visible para cambiar las medidas, orientación, propiedades y copias. Al añadir un elemento o abrir una plantilla/diseño se vuelve al lienzo.
+
+Las barras de acciones y formato se desplazan horizontalmente. Selecciona un texto o celda y usa **Editar texto**; **Terminar edición** confirma el contenido sin necesitar un teclado físico. Se mantienen el arrastre, los controles de tablas y los botones de encaje/zoom. En escritorio se restauran las dos columnas laterales con los mismos controles y estado, sin duplicarlos.
