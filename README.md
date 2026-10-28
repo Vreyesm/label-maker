@@ -151,3 +151,9 @@ Elementos incluye botones para insertar Fecha actual y Hora actual. El lote de i
 Hasta 1050 px, el lienzo ocupa todo el ancho y la altura disponible. Las pestañas abren las herramientas en un panel modal; **Listo** vuelve al diseño. **Ajustes** permanece visible para cambiar las medidas, orientación, propiedades y copias. Al añadir un elemento o abrir una plantilla/diseño se vuelve al lienzo.
 
 Las barras de acciones y formato se desplazan horizontalmente. Selecciona un texto o celda y usa **Editar texto**; **Terminar edición** confirma el contenido sin necesitar un teclado físico. Se mantienen el arrastre, los controles de tablas y los botones de encaje/zoom. En escritorio se restauran las dos columnas laterales con los mismos controles y estado, sin duplicarlos.
+
+## Ajuste al cuadro y transformaciones en el lienzo
+
+- **Ancho del cuadro** ajusta la letra al ancho disponible sin mover ni redimensionar el cuadro. Respeta los saltos de línea y el alto disponible para evitar recortes. Resuelve campos automáticos/CSV antes de medir. En tablas se aplica a las celdas o al rango seleccionado. **Ajustar texto** conserva su ajuste al ancho del sticker con margen.
+- Al seleccionar un elemento aparece **↻**: un toque gira 90°; arrastrarlo permite elegir el ángulo. Con Shift, el arrastre encaja cada 15°. Con el control enfocado, las flechas izquierda/derecha giran 15° y Home vuelve a 0°. En tablas el control está a la derecha para dejar libres las cabeceras.
+- Durante el resize se muestran **ancho × alto en mm** junto al puntero. Los tiradores de filas/columnas muestran además la medida de la fila/columna. La rotación muestra el ángulo. Estos indicadores son de edición y no aparecen al imprimir o exportar.

@@ -129,7 +129,7 @@ assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:
 assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola'),target={e,cell:null,style:e};for(let i=0;i<4;i++)rotateTextTarget(target,90);return e.rotation===0})()`));
 assert(run(`(()=>{const e=el('text',5,5,50,10,'Hola',{rotation:90}),f=fitTextToSticker(e,{w:60,h:100});return f.rotation===90&&f.w===90&&f.h<=54&&Math.abs(f.x+f.w/2-30)<1e-8&&Math.abs(f.y+f.h/2-50)<1e-8})()`));
 // Overflowing and rotated objects remain inside the editable stage, with room for handles.
-assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO'),doc={w:60,h:100,elements:[e]},b=editingBounds(doc),stage=canvasStage(doc,4);return b.left===-15&&b.right===75&&stage.width===380&&stage.left===70&&stage.left+e.x*4===10})()`));
+assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO'),doc={w:60,h:100,elements:[e]},b=editingBounds(doc),stage=canvasStage(doc,4);return b.left===-15&&b.right===75&&stage.width===440&&stage.left===100&&stage.left+e.x*4===40})()`));
 assert(run(`(()=>{const e=el('text',-15,26,90,48,'TU TEXTO',{rotation:90}),b=rotatedElementBounds(e);return Math.abs(b.left-6)<1e-8&&Math.abs(b.top-5)<1e-8&&Math.abs(b.right-54)<1e-8&&Math.abs(b.bottom-95)<1e-8})()`));
 assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-30,-20,120,40,'Fuera',{rotation:35}),el('rect',80,110,20,30)]},k=3,stage=canvasStage(doc,k);return doc.elements.every(e=>{const b=rotatedElementBounds(e);return stage.left+b.left*k>=9.999&&stage.top+b.top*k>=9.999&&stage.left+b.right*k<=stage.width-9.999&&stage.top+b.bottom*k<=stage.height-9.999})})()`));
 assert(run(`(()=>{const doc={w:60,h:100,elements:[el('text',-15,26,90,48,'TU TEXTO')]},extent=editingBounds(doc),bounds={width:450,height:350},k=fittedScale(extent,bounds);return extent.w*k<=bounds.width&&extent.h*k<=bounds.height})()`));
@@ -160,11 +160,12 @@ assert.equal(run(`val('{{constructor}} {{desconocido}}')`),'{{constructor}} {{de
 assert(run(`(()=>{const original=automaticFields,seen=[];automaticFields=()=>{seen.push(variableClock);return original()};try{const doc={...sampleDoc,elements:[el('text',0,0,50,20,'{{fecha}} {{hora}} {{numero}}')]};const job=buildPrintJob(doc,[{},{}],2);return job.total===4&&!job.html.includes('{{fecha}}')&&seen.every(value=>value&&value===seen[0])&&variableClock===null}finally{automaticFields=original}})()`));
 assert(run(`(()=>{const date=new Date(2026,0,2);return withVariableClock(date,()=>{try{buildPrintJob({...sampleDoc,elements:[el('text',0,0,20,10,'{{missing}}')]},[{}],1)}catch{}return variableClock===date})&&variableClock===null})()`));
 const fakeInput={style:{},setAttribute(){},remove(){this.removed=true},focus(){},select(){},setSelectionRange(){}};
-const fakeNode={classList:{add(){},remove(){}},append(){}};
+context.window={innerWidth:1440,innerHeight:1000};
+const fakeNode={style:{},offsetWidth:120,offsetHeight:30,classList:{add(){},remove(){}},append(){}};
 context.document.createElement=tag=>tag==='canvas'?{getContext:()=>null}:fakeInput;
 context.document.querySelector=selector=>selector==='#canvas-area'?{clientWidth:590}:fakeNode;
-assert.equal(run(`fitWidth=true;zoom=1;scale()`),5);
-assert.equal(run(`state.h=200;scale()`),5); // Width fit ignores label height.
+assert.equal(run(`fitWidth=true;zoom=1;scale()`),4.4);
+assert.equal(run(`state.h=200;scale()`),4.4); // Width fit ignores label height.
 run(`state.h=60;fitWidth=false;render=()=>{};persist=()=>{};history=[];future=[];`);
 run(`startInlineEdit(state.elements[0]);activeEditor.input.value='Texto editado';finishInlineEdit()`);
 assert.equal(run(`state.elements[0].text`),'Texto editado');assert.equal(run(`history.length`),1);
@@ -197,7 +198,7 @@ const previousQuery=context.document.querySelector;context.document.querySelecto
 run(`applyGrid(true,4)`);assert.equal(gridState['show-grid'],true);assert.equal(gridState['--grid-step'],'20px');
 run(`applyGrid(false,4)`);assert.equal(gridState['show-grid'],false);context.document.querySelector=previousQuery;
 // Exercise the visible toolbar controls with the selected element.
-const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#text-font','#text-ink','#format-entire-table','#text-turn-left','#text-turn-right','#text-turn-reset','#range-track-size','#range-add-track','#range-delete-track'].map(id=>[id,{innerHTML:''}]));
+const controls=Object.fromEntries(['#text-toolbar','#font-smaller','#font-larger','#font-points','#text-bold','#toolbar-fit-text','#toolbar-fit-box','#text-font','#text-ink','#format-entire-table','#text-turn-left','#text-turn-right','#text-turn-reset','#range-track-size','#range-add-track','#range-delete-track'].map(id=>[id,{innerHTML:''}]));
 const alignButtons=['left','center','right','justify'].map(a=>({dataset:{textAlign:a}}));
 const verticalButtons=['top','middle','bottom'].map(a=>({dataset:{textValign:a}}));
 controls['#text-toolbar'].querySelectorAll=selector=>selector==='[data-text-valign]'?verticalButtons:alignButtons;
@@ -331,4 +332,14 @@ run(`addElement('time')`);assert.equal(run(`state.elements.find(e=>e.id===select
 const rangeStorage=new Map(),rangeDocument=JSON.parse(run(`JSON.stringify({name:'Rango',w:100,h:60,bg:'#ffffff',elements:[rangeTable]})`)),rangeId=rangeDocument.elements[0].id;
 rangeStorage.set('labela-current',JSON.stringify(rangeDocument));rangeStorage.set('labela-view',JSON.stringify({selected:rangeId,activeCell:{id:rangeId,row:0,col:1,scope:'col'}}));
 const rangeReload=workspaceHarness(rangeStorage);rangeReload.eval(`restoreWorkspace()`);assert.equal(rangeReload.eval(`activeCell.scope`),'col');assert.equal(rangeReload.eval(`activeCell.col`),1);
+
+// Box fitting preserves physical geometry and resolves variables before measurement.
+assert(run(`(()=>{const e=el('text',12,13,30,40,'{{producto}}',{size:4,rotation:90}),before=JSON.stringify(e),f=fitTextToBox(e,{producto:'BODEGA'});return measureText('BODEGA',{...e,...f})<=e.w&&measureText('BODEGA',{...e,...f})>e.w-.1&&JSON.stringify(e)===before&&Object.keys(f).join(',')==='size'})()`));
+assert(run(`(()=>{const e=el('text',12,13,30,5,'A\\nB',{size:4}),f=fitTextToBox(e);return f.size*2.4<=5+1e-9&&measureText('A',{...e,...f})<=30})()`));
+assert.equal(run(`fitTextToBox(el('text',0,0,30,20,''))`),null);
+assert.equal(run(`rotationFromPointer(0,0,Math.PI/2)`),90);
+assert.equal(run(`rotationFromPointer(350,0,Math.PI/6)`),20);
+assert.equal(run(`rotationFromPointer(0,0,Math.PI/7,true)`),30);
+assert.equal(run(`dimensionsText({w:42.1234,h:12.5})`),'42.12 × 12.5 mm');
+assert(run(`!svgDoc().includes('rotate-handle')&&!buildPrintJob(state,[{}],1).html.includes('transform-feedback')`));
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical impresión, filas/columnas y campos automáticos.');
