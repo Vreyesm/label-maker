@@ -342,4 +342,12 @@ assert.equal(run(`rotationFromPointer(350,0,Math.PI/6)`),20);
 assert.equal(run(`rotationFromPointer(0,0,Math.PI/7,true)`),30);
 assert.equal(run(`dimensionsText({w:42.1234,h:12.5})`),'42.12 × 12.5 mm');
 assert(run(`!svgDoc().includes('rotate-handle')&&!buildPrintJob(state,[{}],1).html.includes('transform-feedback')`));
+assert(run(`(()=>{const e=el('text',0,0,40,.2,'A',{border:true});setTextSize(e,1);const inner=textLayoutStyle(e);return inner.h>=e.size*1.2&&textLines(inner,e.text).length===1})()`));
+// Text borders stay inside physical geometry and share the same SVG with print/export.
+assert(run(`(()=>{const e=el('text',4,5,40,20,'BODEGA',{border:true,borderWidth:.6,borderColor:'#ff0000'}),m=textBorderMetrics(e),style=textLayoutStyle(e),svg=textBoxSVG(e,e.text);return m.stroke===.6&&m.inset>m.stroke&&style.w<e.w&&style.h<e.h&&svg.includes('stroke="#ff0000"')&&svg.includes('fill="#000000"')&&svg.includes('width="39.4"')&&svg.includes('data-text-border')})()`));
+assert(run(`(()=>{const e=el('text',0,0,40,20,'Sin borde');return textBoxSVG(e,e.text)===textSVG(e,e.text)&&textLayoutStyle(e)===e})()`));
+assert(run(`(()=>{const e=el('text',0,0,.2,.5,'',{border:true,borderWidth:3}),m=textBorderMetrics(e),inner=textLayoutStyle(e);return inner.w>0&&inner.h>0&&m.stroke<=e.w/4})()`));
+assert(run(`(()=>{const e=el('text',0,0,40,20,'{{producto}}',{border:true,borderWidth:.4,rotation:90}),fit=fitTextToBox(e,{producto:'BODEGA'}),inner=textLayoutStyle({...e,...fit});return measureText('BODEGA',inner)<=inner.w&&fit.size*1.2<=inner.h&&e.w===40&&e.h===20})()`));
+assert(run(`(()=>{const e=el('text',0,0,40,20,'BODEGA',{border:true,borderColor:'#112233',borderWidth:.4}),doc={...sampleDoc,elements:[e]},svg=svgDoc(doc),job=buildPrintJob(doc,[{}],1),restored=validate(JSON.parse(JSON.stringify(doc)));return job.html.includes(svg)&&restored.elements[0].border&&restored.elements[0].borderWidth===.4&&restored.elements[0].borderColor==='#112233'})()`));
+for(const extra of [{border:'yes'},{borderWidth:0},{borderWidth:4},{borderColor:'red'},{borderColor:123}]){context.badBorder=extra;assert.throws(()=>run(`validate({...sampleDoc,elements:[el('text',0,0,40,20,'A',badBorder)]})`));}
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical impresión, filas/columnas y campos automáticos.');
