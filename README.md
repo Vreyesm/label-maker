@@ -157,3 +157,9 @@ Las barras de acciones y formato se desplazan horizontalmente. Selecciona un tex
 - **Ancho del cuadro** ajusta la letra al ancho disponible sin mover ni redimensionar el cuadro. Respeta los saltos de línea y el alto disponible para evitar recortes. Resuelve campos automáticos/CSV antes de medir. En tablas se aplica a las celdas o al rango seleccionado. **Ajustar texto** conserva su ajuste al ancho del sticker con margen.
 - Al seleccionar un elemento aparece **↻**: un toque gira 90°; arrastrarlo permite elegir el ángulo. Con Shift, el arrastre encaja cada 15°. Con el control enfocado, las flechas izquierda/derecha giran 15° y Home vuelve a 0°. En tablas el control está a la derecha para dejar libres las cabeceras.
 - Durante el resize se muestran **ancho × alto en mm** junto al puntero. Los tiradores de filas/columnas muestran además la medida de la fila/columna. La rotación muestra el ángulo. Estos indicadores son de edición y no aparecen al imprimir o exportar.
+
+## Bordes en cuadros de texto
+
+Selecciona un texto y abre sus propiedades (**Ajustes** en móvil). En **Borde del cuadro**, activa **Mostrar borde** y elige grosor de 0,1 a 3 mm y color independiente de la letra. El borde queda dentro del cuadro y deja separación interior para el texto. Los ajustes al cuadro/sticker y la edición directa respetan ese espacio.
+
+El borde se conserva al guardar, duplicar, importar/exportar y deshacer cambios; usa el mismo SVG en el canvas y la impresión. Los diseños anteriores se abren sin borde.
