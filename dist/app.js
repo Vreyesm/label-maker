@@ -181,9 +181,8 @@ function applyTextFormat(target,key,value){
  }
 }
 function fitCellText(e,cell){
- const style=cellTextStyle(e,cell.row,cell.col),lines=val(e.cells[cell.row][cell.col]).split('\n'),width=Math.max(...lines.map(line=>measureText(line,style)));
- if(!width)return;
- setCellFormat(e,cell,'size',Math.min(style.size*style.w/width,style.h/(1.2*lines.length)));
+ const style=cellTextStyle(e,cell.row,cell.col),fitted=fitTextToBox({...style,text:e.cells[cell.row][cell.col]},rows[record]||{},record);
+ if(fitted)setCellFormat(e,cell,'size',fitted.size);
 }
 function cellSelectionMarkup(e){
  const cell=selectedTableCell(e);if(!cell||selected!==e.id)return '';const box=tableCellBox(e,cell.row,cell.col);if(cell.scope==='row'){box.x=0;box.w=e.w}else if(cell.scope==='col'){box.y=0;box.h=e.h}
@@ -264,9 +263,9 @@ function tableHeaderControls(e){
  return tracks.cols.map((w,index)=>{const left=x;x+=w;const letter=String.fromCharCode(65+index);return `<span class="table-column-head ${selection?.scope==='col'&&selection.col===index?'active':''}" style="left:${left/e.w*100}%;width:${w/e.w*100}%"><button type="button" data-table-action="select-col" data-index="${index}" title="Seleccionar columna ${letter}">${letter}</button><button type="button" data-table-action="insert-col" data-index="${index+1}" title="Insertar columna a la derecha de ${letter}" aria-label="Insertar columna a la derecha de ${letter}" ${e.cols>=10?'disabled':''}>+</button><span class="track-size-grip col" data-table-action="resize-col" data-index="${index}" title="Arrastra para cambiar todo el ancho de esta columna"></span></span>`}).join('')+tracks.rows.map((h,index)=>{const top=y;y+=h;return `<span class="table-row-head ${selection?.scope==='row'&&selection.row===index?'active':''}" style="top:${top/e.h*100}%;height:${h/e.h*100}%"><button type="button" data-table-action="select-row" data-index="${index}" title="Seleccionar fila ${index+1}">${index+1}</button><button type="button" data-table-action="insert-row" data-index="${index+1}" title="Insertar fila debajo de ${index+1}" aria-label="Insertar fila debajo de ${index+1}" ${e.rows>=10?'disabled':''}>+</button><span class="track-size-grip row" data-table-action="resize-row" data-index="${index}" title="Arrastra para cambiar todo el alto de esta fila"></span></span>`}).join('');
 }
 function beginSingleTrackResize(event,node,e,axis,index){
- selectTableRange(e,axis,index);const baseline={...e,tracks:tableTracks(e)},original=baseline.tracks[axis==='col'?'cols':'rows'][index],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
- node.setPointerCapture(event.pointerId);node.onpointermove=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(!moved&&Math.hypot(dx,dy)<3)return;if(!moved){checkpoint();moved=true}const delta=localDelta(dx/k,dy/k,e.rotation||0),size=Math.max(.5,Math.min(300,Math.round((original+(axis==='col'?delta.x:delta.y))*2)/2));setSingleTrackSize(e,axis,index,size,baseline);node.style.left=e.x*k+'px';node.style.top=e.y*k+'px';node.style.width=e.w*k+'px';node.style.height=e.h*k+'px';node.innerHTML=elementContent(e)};
- const finish=()=>{node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}else renderProperties()};node.onpointerup=finish;node.onpointercancel=finish;
+ showTransformFeedback(event,dimensionsText(e));selectTableRange(e,axis,index);const baseline={...e,tracks:tableTracks(e)},original=baseline.tracks[axis==='col'?'cols':'rows'][index],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
+ node.setPointerCapture(event.pointerId);node.onpointermove=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(!moved&&Math.hypot(dx,dy)<3)return;if(!moved){checkpoint();moved=true}const delta=localDelta(dx/k,dy/k,e.rotation||0),size=Math.max(.5,Math.min(300,Math.round((original+(axis==='col'?delta.x:delta.y))*2)/2));setSingleTrackSize(e,axis,index,size,baseline);node.style.left=e.x*k+'px';node.style.top=e.y*k+'px';node.style.width=e.w*k+'px';node.style.height=e.h*k+'px';node.innerHTML=elementContent(e);showTransformFeedback(ev,`${axis==='col'?'Columna':'Fila'} ${+(tableTracks(e)[axis==='col'?'cols':'rows'][index]).toFixed(2)} mm · ${dimensionsText(e)}`)};
+ const finish=()=>{hideTransformFeedback();node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}else renderProperties()};node.onpointerup=finish;node.onpointercancel=finish;
 }
 function executeTableControl(control,e,event,node){
  if(control.disabled)return;const [action,axis]=control.dataset.tableAction.split('-'),index=+control.dataset.index;
@@ -285,10 +284,10 @@ function tableCellAt(e,x,y){
 }
 function localDelta(dx,dy,angle){const r=angle*Math.PI/180;return {x:dx*Math.cos(r)+dy*Math.sin(r),y:-dx*Math.sin(r)+dy*Math.cos(r)}}
 function beginTableTrackResize(event,node,e,axis,index){
- const original=tableTracks(e)[axis==='col'?'cols':'rows'],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
+ showTransformFeedback(event,dimensionsText(e));const original=tableTracks(e)[axis==='col'?'cols':'rows'],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
  node.setPointerCapture(event.pointerId);
- node.onpointermove=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(!moved&&Math.hypot(dx,dy)<3)return;if(!moved){checkpoint();moved=true}const delta=localDelta(dx/k,dy/k,e.rotation||0);resizeTableTrack(e,axis,index,axis==='col'?delta.x:delta.y,original);node.innerHTML=elementContent(e)};
- const finish=()=>{node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}};
+ node.onpointermove=ev=>{const dx=ev.clientX-start.x,dy=ev.clientY-start.y;if(!moved&&Math.hypot(dx,dy)<3)return;if(!moved){checkpoint();moved=true}const delta=localDelta(dx/k,dy/k,e.rotation||0);resizeTableTrack(e,axis,index,axis==='col'?delta.x:delta.y,original);node.innerHTML=elementContent(e);showTransformFeedback(ev,`${axis==='col'?'Columna':'Fila'} ${+(tableTracks(e)[axis==='col'?'cols':'rows'][index]).toFixed(2)} mm · ${dimensionsText(e)}`)};
+ const finish=()=>{hideTransformFeedback();node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}};
  node.onpointerup=finish;node.onpointercancel=finish;
 }
 function tableProperties(e){
@@ -322,7 +321,7 @@ function editingBounds(doc){
  return {left,top,right,bottom,w:right-left,h:bottom-top};
 }
 function canvasStage(doc,k){
- const bounds=editingBounds(doc),padding=doc.elements.some(e=>e.type==='table')?36:10;
+ const bounds=editingBounds(doc),padding=40;
  return {width:bounds.w*k+2*padding,height:bounds.h*k+2*padding,left:-bounds.left*k+padding,top:-bounds.top*k+padding};
 }
 function updateCanvasStage(k){
@@ -334,14 +333,14 @@ function updateCanvasStage(k){
 function viewBounds(){
  const area=$('#canvas-area'),style=typeof getComputedStyle==='function'?getComputedStyle(area):null;
  const padding=(key,fallback)=>style?parseFloat(style[key])||0:fallback;
- const controls=state.elements.some(e=>e.type==='table')?72:20;const width=area.clientWidth-padding('paddingLeft',35)-padding('paddingRight',35)-controls;
+ const controls=80;const width=area.clientWidth-padding('paddingLeft',35)-padding('paddingRight',35)-controls;
  const height=(area.clientHeight??520)-padding('paddingTop',28)-padding('paddingBottom',24)-($('#canvas-caption')?.offsetHeight??12)-($('#canvas-hint')?.offsetHeight??24)-92-(controls-20);
  return {width:Math.max(1,width),height:Math.max(1,height)};
 }
 function fittedScale(doc,bounds,mode='screen'){const width=bounds.width/doc.w;return Math.max(.001,mode==='width'?width:Math.min(width,bounds.height/doc.h))}
 function scale(){const bounds=viewBounds(),extent=editingBounds(state);return (fitWidth?fittedScale(state,bounds,'width'):fitScreen?fittedScale(extent,bounds):Math.min(5.1,fittedScale(state,bounds)))*zoom}
 function applyGrid(visible,k=scale()){$('#board').classList.toggle('show-grid',!!visible);$('#board').style.setProperty('--grid-step',`${5*k}px`)}
-function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg>${e.type==='table'?tableHandles(e)+cellSelectionMarkup(e):''}<span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
+function elementContent(e){return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${e.w} ${e.h}" width="100%" height="100%">${svgContent(e,rows[record]||{},record)}</svg>${e.type==='table'?tableHandles(e)+cellSelectionMarkup(e):''}<button type="button" class="rotate-handle ${e.type==='table'?'table-rotation':''}" title="Arrastra para girar; toca para girar 90°" aria-label="Girar elemento en el lienzo">↻</button><span class="resize-handle" title="Arrastra para cambiar el tamaño" aria-label="Redimensionar elemento"></span>`}
 function fitTextToSticker(e,doc,row={},index=0){
  const lines=val(e.text,row,index).split('\n'),longest=Math.max(...lines.map(t=>measureText(t,e)));
  if(!longest)return null;
@@ -349,6 +348,45 @@ function fitTextToSticker(e,doc,row={},index=0){
  const availableWidth=(quarter?doc.h:doc.w)*.9,availableHeight=(quarter?doc.w:doc.h)*.9;
  const size=Math.min(e.size*availableWidth/longest,availableHeight/(1.2*lines.length)),h=size*1.2*lines.length,w=availableWidth;
  return {x:(doc.w-w)/2,w,size,h,y:quarter?(doc.h-h)/2:Math.max(doc.h*.05,Math.min(e.y,doc.h*.95-h)),rotation:angle};
+}
+// Fit font size inside the existing box, preserving position, extent and rotation.
+function fitTextToBox(e,row={},index=0){
+ const lines=val(e.text,row,index).split('\n'),longest=Math.max(...lines.map(text=>measureText(text,e)));
+ if(!longest)return null;
+ let size=Math.min(e.size*e.w/longest,e.h/(1.2*lines.length));
+ // Browser font metrics round sizes; leave a tiny guard against an extra wrapped line.
+ for(let i=0;i<3;i++){const width=Math.max(...lines.map(text=>measureText(text,{...e,size})));if(width<=e.w-.001)break;size*=(e.w-Math.min(.01,e.w*.001))/width}
+ return {size};
+}
+function rotationFromPointer(original,start,current,snap=false){
+ const degrees=original+(current-start)*180/Math.PI;
+ return normalizedAngle(Math.round(degrees/(snap?15:1))*(snap?15:1));
+}
+function showTransformFeedback(event,text){
+ const badge=$('#transform-feedback');badge.textContent=text;badge.hidden=false;
+ const width=badge.offsetWidth,height=badge.offsetHeight;
+ badge.style.left=Math.max(8,Math.min(event.clientX+16,window.innerWidth-width-8))+'px';
+ badge.style.top=Math.max(8,Math.min(event.clientY+18,window.innerHeight-height-8))+'px';
+}
+function hideTransformFeedback(){$('#transform-feedback').hidden=true}
+function dimensionsText(e){return `${+e.w.toFixed(2)} × ${+e.h.toFixed(2)} mm`}
+function beginElementRotation(event,node,e){
+ event.preventDefault();finishInlineEdit(true,false);
+ const rect=node.getBoundingClientRect(),cx=rect.left+rect.width/2,cy=rect.top+rect.height/2,original=e.rotation||0,start=Math.atan2(event.clientY-cy,event.clientX-cx),point={x:event.clientX,y:event.clientY};let moved=false;
+ node.setPointerCapture(event.pointerId);
+ showTransformFeedback(event,`${normalizedAngle(original)}°`);
+ node.onpointermove=ev=>{
+  if(!moved&&Math.hypot(ev.clientX-point.x,ev.clientY-point.y)<3)return;
+  if(!moved){checkpoint();moved=true}
+  e.rotation=rotationFromPointer(original,start,Math.atan2(ev.clientY-cy,ev.clientX-cx),ev.shiftKey);
+  node.style.transform=`rotate(${e.rotation}deg)`;showTransformFeedback(ev,`${e.rotation}°`);
+ };
+ const finish=ev=>{
+  node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;hideTransformFeedback();
+  if(!moved&&ev.type!=='pointercancel'){checkpoint();e.rotation=normalizedAngle(original+90);moved=true}
+  render();if(moved)persist();
+ };
+ node.onpointerup=finish;node.onpointercancel=finish;
 }
 function orientLabel(doc,direction,rotateContent=true){
  if(!['portrait','landscape'].includes(direction))throw Error('Orientación no válida.');
@@ -461,7 +499,7 @@ function renderTextToolbar(){
  const target=formattingTarget(),e=target?.e,cell=target?.cell,style=target?.style,root=$('#text-toolbar'),disabled=!target;
  const label=cell?.scope==='row'?`Fila ${cell.row+1}`:cell?.scope==='col'?`Columna ${String.fromCharCode(65+cell.col)}`:cell?`Celda ${cell.row+1} · ${cell.col+1}`:e?.type==='table'?'Tabla completa':'Texto';
  const angle=disabled?0:normalizedAngle(e.type==='table'?(style.textRotation||0):(e.rotation||0));
- root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-rotation" role="group" aria-label="Girar texto"><button id="text-turn-left" title="Girar texto 90° a la izquierda" aria-label="Girar texto 90° a la izquierda" ${disabled?'disabled':''}>↶ 90°</button><button id="text-turn-right" title="Girar texto 90° a la derecha" aria-label="Girar texto 90° a la derecha" ${disabled?'disabled':''}>↷ 90°</button><button id="text-turn-reset" title="Restablecer giro del texto a 0°" aria-label="Restablecer giro del texto" ${disabled?'disabled':''}>${angle}°</button></div><span class="toolbar-divider"></span><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell&&['row','col'].includes(cell.scope)?`<label class="track-size-input">${cell.scope==='row'?'Alto de fila':'Ancho de columna'}<span><input id="range-track-size" type="number" min=".5" max="300" step=".5" value="${+tableTracks(e)[cell.scope==='row'?'rows':'cols'][cell.scope==='row'?cell.row:cell.col].toFixed(2)}"> mm</span></label><button id="range-add-track">+ ${cell.scope==='row'?'Fila':'Columna'}</button><button id="range-delete-track" title="Eliminar ${cell.scope==='row'?'fila':'columna'} seleccionada">Eliminar ${cell.scope==='row'?'fila':'columna'}</button>`:''}${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
+ root.innerHTML=`<span class="text-toolbar-label">${label}</span><select id="text-font" aria-label="Tipografía del texto" title="Tipografía" ${disabled?'disabled':''}>${['Arial','Georgia','Courier New'].map(font=>`<option ${style?.font===font?'selected':''}>${font}</option>`).join('')}</select><div class="font-size-group"><button id="font-smaller" aria-label="Reducir tamaño de letra" title="Reducir tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>−</small></button><label class="points-input"><span class="sr-only">Tamaño de letra en puntos</span><input id="font-points" type="number" min="1" max="1000" step="1" value="${disabled?'':textSizeInPoints(style)}" placeholder="—" ${disabled?'disabled':''}><span>pt</span></label><button id="font-larger" aria-label="Aumentar tamaño de letra" title="Aumentar tamaño de letra (1 pt)" ${disabled?'disabled':''}>A<small>+</small></button></div><button id="text-bold" class="bold-button" aria-label="Negrita" title="Negrita" aria-pressed="${!disabled&&!!style.bold}" ${disabled?'disabled':''}>B</button><label class="toolbar-ink" title="Color del texto"><span class="sr-only">Color del texto</span><input id="text-ink" type="color" value="${style?.color||'#000000'}" ${disabled?'disabled':''}></label><span class="toolbar-divider"></span><div class="text-alignment" role="group" aria-label="Alineación del texto">${['left','center','right','justify'].map((align,i)=>`<button data-text-align="${align}" title="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-label="${['Alinear a la izquierda','Centrar texto','Alinear a la derecha','Justificar texto'][i]}" aria-pressed="${!disabled&&(style.align||'left')===align}" ${disabled?'disabled':''}>${alignmentIcon(align)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-vertical-alignment" role="group" aria-label="Alineación vertical del texto">${['top','middle','bottom'].map((a,i)=>`<button data-text-valign="${a}" aria-label="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" title="${['Alinear arriba','Centrar verticalmente','Alinear abajo'][i]}" aria-pressed="${!disabled&&(style.valign||(e.type==='table'?'middle':'top'))===a}" ${disabled?'disabled':''}>${verticalAlignmentIcon(a)}</button>`).join('')}</div><span class="toolbar-divider"></span><div class="text-rotation" role="group" aria-label="Girar texto"><button id="text-turn-left" title="Girar texto 90° a la izquierda" aria-label="Girar texto 90° a la izquierda" ${disabled?'disabled':''}>↶ 90°</button><button id="text-turn-right" title="Girar texto 90° a la derecha" aria-label="Girar texto 90° a la derecha" ${disabled?'disabled':''}>↷ 90°</button><button id="text-turn-reset" title="Restablecer giro del texto a 0°" aria-label="Restablecer giro del texto" ${disabled?'disabled':''}>${angle}°</button></div><span class="toolbar-divider"></span><button id="toolbar-fit-box" title="Ajustar al ancho del cuadro conservando su tamaño; limita la letra al alto disponible" ${disabled?'disabled':''}>↔ Ancho del cuadro</button><button id="toolbar-fit-text" title="${e?.type==='table'?'Ajustar texto al espacio de las celdas':'Ajustar texto al ancho del sticker con 5% de margen a cada lado'}" ${disabled?'disabled':''}>↔ Ajustar texto</button>${cell&&['row','col'].includes(cell.scope)?`<label class="track-size-input">${cell.scope==='row'?'Alto de fila':'Ancho de columna'}<span><input id="range-track-size" type="number" min=".5" max="300" step=".5" value="${+tableTracks(e)[cell.scope==='row'?'rows':'cols'][cell.scope==='row'?cell.row:cell.col].toFixed(2)}"> mm</span></label><button id="range-add-track">+ ${cell.scope==='row'?'Fila':'Columna'}</button><button id="range-delete-track" title="Eliminar ${cell.scope==='row'?'fila':'columna'} seleccionada">Eliminar ${cell.scope==='row'?'fila':'columna'}</button>`:''}${cell?'<button id="format-entire-table" title="Aplicar los próximos formatos a toda la tabla">Toda la tabla</button>':''}${disabled?'<span class="text-toolbar-help">Selecciona un texto o una celda</span>':''}`;
  root.onpointerdown=()=>{if(activeEditor)finishInlineEdit(true,false)};
  if(disabled)return;
  const set=(key,value)=>change(()=>applyTextFormat(target,key,value));
@@ -478,6 +516,10 @@ function renderTextToolbar(){
  $('#text-turn-reset').onclick=()=>change(()=>rotateTextTarget(target,0,true));
  if(cell&&['row','col'].includes(cell.scope)){const axis=cell.scope,index=axis==='row'?cell.row:cell.col;$('#range-track-size').onchange=event=>{const size=+event.target.value;if(!Number.isFinite(size)||size<.5||size>300){toast('Usa un tamaño entre 0,5 y 300 mm.');renderTextToolbar();return}change(()=>setSingleTrackSize(e,axis,index,size))};$('#range-add-track').onclick=()=>{try{change(()=>mutateTableTrack(e,axis,index+1,'insert'))}catch(error){toast(error.message)}};$('#range-delete-track').onclick=()=>{try{change(()=>mutateTableTrack(e,axis,index,'delete'))}catch(error){toast(error.message)}}}
  if(cell)$('#format-entire-table').onclick=()=>{activeCell=null;render()};
+ $('#toolbar-fit-box').onclick=()=>{
+  if(e.type==='table')change(()=>tableRangeCells(e,cell).forEach(position=>fitCellText(e,position)));
+  else{const fitted=fitTextToBox(e,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')}
+ };
  $('#toolbar-fit-text').onclick=()=>{
   if(e.type==='table')change(()=>{tableRangeCells(e,cell).forEach(position=>fitCellText(e,position))});
   else{const fitted=fitTextToSticker(e,state,rows[record]||{},record);if(fitted)change(()=>Object.assign(e,fitted));else toast('Escribe un texto para ajustar su ancho')}
@@ -490,7 +532,7 @@ function download(name,content,type){let url=URL.createObjectURL(new Blob([conte
 function parseCSV(text){text=text.replace(/^\uFEFF/,'');const delimiter=(text.split('\n')[0].match(/;/g)||[]).length>(text.split('\n')[0].match(/,/g)||[]).length?';':',';let result=[],row=[],cell='',quoted=false;for(let i=0;i<text.length;i++){let c=text[i];if(c==='"'){if(quoted&&text[i+1]==='"'){cell+='"';i++}else quoted=!quoted}else if(c===delimiter&&!quoted){row.push(cell);cell=''}else if((c==='\n'||c==='\r')&&!quoted){if(c==='\r'&&text[i+1]==='\n')i++;row.push(cell);result.push(row);row=[];cell=''}else cell+=c}if(quoted)throw Error('El CSV contiene comillas sin cerrar.');if(cell||row.length){row.push(cell);result.push(row)}return result}
 function validate(d){if(!d||!Array.isArray(d.elements)||d.elements.length>300||!Number.isFinite(d.w)||!Number.isFinite(d.h)||d.w<10||d.h<10||d.w>300||d.h>300||!/^#[0-9a-f]{6}$/i.test(d.bg))throw Error('Archivo de diseño inválido.');d.name=String(d.name||'Diseño importado');const elementIds=new Set();d.elements.forEach((e,i)=>{if(!['text','barcode','image','rect','line','table'].includes(e.type)||!['x','y','w','h','size'].every(k=>Number.isFinite(e[k]))||e.w<=0||e.h<=0||!/^#[0-9a-f]{6}$/i.test(e.color)|| (e.rotation!==undefined&&!Number.isFinite(e.rotation)))throw Error('Elemento inválido en el archivo.');if(e.type==='image'&&!/^data:image\/(png|jpeg|webp);base64,/.test(e.src))throw Error('Formato de imagen no permitido.');if(e.type==='table'&&(!Number.isInteger(e.rows)||!Number.isInteger(e.cols)||e.rows<1||e.rows>10||e.cols<1||e.cols>10||!Array.isArray(e.cells)||e.cells.length!==e.rows||!e.cells.every(row=>Array.isArray(row)&&row.length===e.cols&&row.every(cell=>typeof cell==='string'))))throw Error('Tabla inválida en el archivo.');if(e.valign!==undefined&&!['top','middle','bottom'].includes(e.valign))throw Error('Alineación vertical inválida.');if(e.type==='table')for(const [key,count] of [['colSizes',e.cols],['rowSizes',e.rows]])if(e[key]!==undefined&&(!Array.isArray(e[key])||e[key].length!==count||!e[key].every(n=>Number.isFinite(n)&&n>0)||!Number.isFinite(e[key].reduce((a,b)=>a+b,0))))throw Error('Dimensiones de celdas inválidas.');if(e.type==='table'){validateCellFormats(e);if(e.textRotation!==undefined&&![0,90,180,270].includes(e.textRotation))throw Error('Giro de texto de tabla inválido.');}if(e.color.toLowerCase()==='#182c21')e.color='#000000';if(!Number.isInteger(e.id)||e.id<1||elementIds.has(e.id)){let next=i+1;while(elementIds.has(next))next++;e.id=next}elementIds.add(e.id)});return d}
 $('#board').ondblclick=event=>{
- const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle,[data-table-axis],[data-table-action],.inline-text'))return;
+ const node=event.target.closest('.element');if(!node||event.target.closest('.resize-handle,.rotate-handle,[data-table-axis],[data-table-action],.inline-text'))return;
  const e=state.elements.find(e=>e.id===+node.dataset.id);
  if(e.type==='table'){startInlineEdit(e,undefined,cellFromEvent(e,node,event));
  }else startInlineEdit(e);
@@ -498,11 +540,13 @@ $('#board').ondblclick=event=>{
 $('#board').onpointerdown=event=>{
  if(event.button!==0||event.target.closest('.inline-text'))return;
  const control=event.target.closest('[data-table-action]');if(control){event.preventDefault();event.stopPropagation();const parent=control.closest('.element'),table=state.elements.find(e=>e.id===+parent.dataset.id);executeTableControl(control,table,event,parent);return}
- const node=event.target.closest('.element'),track=event.target.closest('[data-table-axis]'),axis=track?.dataset.tableAxis,index=+(track?.dataset.track||0),resizing=!!event.target.closest('.resize-handle');
+ const node=event.target.closest('.element'),track=event.target.closest('[data-table-axis]'),axis=track?.dataset.tableAxis,index=+(track?.dataset.track||0),resizing=!!event.target.closest('.resize-handle'),rotating=!!event.target.closest('.rotate-handle');
  finishInlineEdit(true,false);
  if(!node){selected=null;activeCell=null;render();return}
  const e=state.elements.find(e=>e.id===+node.dataset.id);
- selected=e.id;if(e.type==='table'&&!track&&!resizing)activeCell={id:e.id,...cellFromEvent(e,node,event)};else if(e.type!=='table')activeCell=null;document.querySelectorAll('.table-cell-selection').forEach(mark=>mark.remove());if(e.type==='table')node.insertAdjacentHTML('beforeend',cellSelectionMarkup(e));document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();scheduleViewSave();
+ selected=e.id;if(e.type==='table'&&!track&&!resizing&&!rotating)activeCell={id:e.id,...cellFromEvent(e,node,event)};else if(e.type!=='table')activeCell=null;document.querySelectorAll('.table-cell-selection').forEach(mark=>mark.remove());if(e.type==='table')node.insertAdjacentHTML('beforeend',cellSelectionMarkup(e));document.querySelectorAll('.element').forEach(n=>n.classList.toggle('selected',+n.dataset.id===selected));renderProperties();scheduleViewSave();
+ if(rotating){beginElementRotation(event,node,e);return}
+ if(resizing)showTransformFeedback(event,dimensionsText(e));
  if(track&&e.type==='table'){beginTableTrackResize(event,node,e,axis,index);return}
  const start={px:event.clientX,py:event.clientY,x:e.x,y:e.y,w:e.w,h:e.h},k=scale();let moved=false;
  node.setPointerCapture(event.pointerId);
@@ -513,12 +557,12 @@ $('#board').onpointerdown=event=>{
   if(resizing)Object.assign(e,resizedBounds(start,dx,dy,e.rotation||0));
   else{e.x=Math.round((start.x+dx)*2)/2;e.y=Math.round((start.y+dy)*2)/2}
   node.style.left=e.x*k+'px';node.style.top=e.y*k+'px';node.style.width=e.w*k+'px';node.style.height=e.h*k+'px';
-  if(resizing)node.innerHTML=elementContent(e);
+  if(resizing){node.innerHTML=elementContent(e);showTransformFeedback(ev,dimensionsText(e))}
  };
- const finish=()=>{node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}else renderProperties()};
+ const finish=()=>{hideTransformFeedback();node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}else renderProperties()};
  node.onpointerup=finish;node.onpointercancel=finish;
 };
-$('#board').onkeydown=event=>{const control=event.target.closest('[data-table-action]');if(control&&['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();const node=control.closest('.element'),e=state.elements.find(e=>e.id===+node.dataset.id);executeTableControl(control,e,null,node)}};
+$('#board').onkeydown=event=>{const handle=event.target.closest('.rotate-handle');if(handle&&['Enter',' ','ArrowLeft','ArrowRight','Home'].includes(event.key)){event.preventDefault();event.stopPropagation();const id=+handle.closest('.element').dataset.id,e=state.elements.find(item=>item.id===id);change(()=>e.rotation=event.key==='Home'?0:normalizedAngle((e.rotation||0)+(event.key==='ArrowLeft'?-15:event.key==='ArrowRight'?15:90)));$(`[data-id="${id}"] .rotate-handle`)?.focus();return}const control=event.target.closest('[data-table-action]');if(control&&['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();const node=control.closest('.element'),e=state.elements.find(e=>e.id===+node.dataset.id);executeTableControl(control,e,null,node)}};
 document.querySelectorAll('[data-orientation]').forEach(button=>button.onclick=()=>{
  finishInlineEdit();const direction=button.dataset.orientation;
  if(state.w===state.h||(direction==='portrait'?state.h>state.w:state.w>state.h))return;
