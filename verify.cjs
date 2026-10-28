@@ -342,6 +342,7 @@ assert.equal(run(`rotationFromPointer(350,0,Math.PI/6)`),20);
 assert.equal(run(`rotationFromPointer(0,0,Math.PI/7,true)`),30);
 assert.equal(run(`dimensionsText({w:42.1234,h:12.5})`),'42.12 × 12.5 mm');
 assert(run(`!svgDoc().includes('rotate-handle')&&!buildPrintJob(state,[{}],1).html.includes('transform-feedback')`));
+assert(run(`(()=>{const e=el('text',0,0,40,.2,'A',{border:true});setTextSize(e,1);const inner=textLayoutStyle(e);return inner.h>=e.size*1.2&&textLines(inner,e.text).length===1})()`));
 // Text borders stay inside physical geometry and share the same SVG with print/export.
 assert(run(`(()=>{const e=el('text',4,5,40,20,'BODEGA',{border:true,borderWidth:.6,borderColor:'#ff0000'}),m=textBorderMetrics(e),style=textLayoutStyle(e),svg=textBoxSVG(e,e.text);return m.stroke===.6&&m.inset>m.stroke&&style.w<e.w&&style.h<e.h&&svg.includes('stroke="#ff0000"')&&svg.includes('fill="#000000"')&&svg.includes('width="39.4"')&&svg.includes('data-text-border')})()`));
 assert(run(`(()=>{const e=el('text',0,0,40,20,'Sin borde');return textBoxSVG(e,e.text)===textSVG(e,e.text)&&textLayoutStyle(e)===e})()`));

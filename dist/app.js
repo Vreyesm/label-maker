@@ -505,7 +505,8 @@ function textSizeInPoints(e){return Math.round(e.size/MM_PER_PT*10)/10}
 function setTextSize(e,points){
  if(!Number.isFinite(points)||points<1||points>1000)return false;
  e.size=points*MM_PER_PT;
- for(let i=0;i<3;i++){const style=textLayoutStyle(e),{inset}=textBorderMetrics(e);e.h=Math.max(e.h,textLines(style,val(e.text)).length*e.size*1.2+2*inset)}
+ const inset=e.border?Math.min(Math.min(e.borderWidth??.3,e.w/4)+.8,e.w/3):0;
+ e.h=Math.max(e.h,textLines({...e,w:e.w-2*inset},val(e.text)).length*e.size*1.2+2*inset);
  return true;
 }
 function alignmentIcon(align){
