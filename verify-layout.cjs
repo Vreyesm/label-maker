@@ -35,10 +35,10 @@ const { resolve } = require('node:path');
         assert(await page.locator('#mobile-panel').evaluate(panel => panel.open));
         await page.locator('#mobile-panel-close').click();
       }
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
       await page.evaluate(() => { state.elements = []; addElement('text'); });
       for (const selector of ['#text-bold', '#toolbar-fit-box', '#text-turn-right']) {
         const control = page.locator(selector);
-        await control.scrollIntoViewIfNeeded();
         await control.click();
       }
       assert.equal(await page.evaluate(() => state.elements[0].rotation), 90);
