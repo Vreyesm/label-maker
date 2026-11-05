@@ -14,7 +14,10 @@ self.addEventListener('install', event => {
         const validType = url.endsWith('.html') ? type.includes('text/html') :
           url.endsWith('.css') ? type.includes('text/css') : /javascript/.test(type);
         if (!response.ok || !validType) throw Error('Incomplete offline assets: ' + url);
-        return response;
+        // Drain each response so the remaining requests can reuse HTTP connections.
+        const buffered = response.clone();
+        await response.arrayBuffer();
+        return buffered;
       }));
       await Promise.all(urls.map((url, i) => cache.put(url, responses[i])));
     } catch (error) {

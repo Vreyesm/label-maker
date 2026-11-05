@@ -35,6 +35,7 @@
     if (applying && !reloading) { reloading = true; location.reload(); }
     else check();
   });
+  button.onpointerdown = event => event.preventDefault();
   button.onclick = () => {
     const waiting = registration?.waiting;
     if (!waiting) { show(); return; }
