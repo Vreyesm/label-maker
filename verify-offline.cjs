@@ -47,6 +47,7 @@ async function ready(page) {
     const chooserPromise = page.waitForEvent('filechooser');
     await page.locator('#csv').click();
     await (await chooserPromise).setFiles({ name: 'datos.csv', mimeType: 'text/csv', buffer: Buffer.from('producto\nSin Internet\n') });
+    await page.waitForFunction(() => rows[0]?.producto === 'Sin Internet');
     assert.equal(await page.evaluate(() => rows[0].producto), 'Sin Internet');
     await page.evaluate(() => { selected = state.elements[0].id; startInlineEdit(state.elements[0]); });
     await page.locator('.inline-text').fill('Edición sin Internet');
