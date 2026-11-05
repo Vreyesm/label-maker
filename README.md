@@ -163,3 +163,13 @@ Las barras de acciones y formato se desplazan horizontalmente. Selecciona un tex
 Selecciona un texto y abre sus propiedades (**Ajustes** en móvil). En **Borde del cuadro**, activa **Mostrar borde** y elige grosor de 0,1 a 3 mm y color independiente de la letra. El borde queda dentro del cuadro y deja separación interior para el texto. Los ajustes al cuadro/sticker y la edición directa respetan ese espacio.
 
 El borde se conserva al guardar, duplicar, importar/exportar y deshacer cambios; usa el mismo SVG en el canvas y la impresión. Los diseños anteriores se abren sin borde.
+
+## Uso sin Internet
+
+Abre la app una vez con Internet y espera **Offline listo** junto al nombre del diseño. Después puedes perder la conexión, recargar o cerrar y volver a abrir la misma URL en ese navegador: se conservan la app, sus plantillas, editor, códigos de barras y salida SVG/impresión. El CSV y las imágenes importadas se procesan localmente y los diseños permanecen en el almacenamiento local existente.
+
+Los archivos de la app se descargan como un conjunto completo. Cuando hay una versión nueva aparece **Actualizar**; ese botón guarda primero el trabajo pendiente y recarga. Si no se puede guardar el diseño, se pide descargar una copia antes de actualizar. Las actualizaciones incompletas mantienen la versión offline anterior.
+
+La primera descarga necesita Internet y HTTPS (localhost también sirve). El modo offline depende del mismo navegador y dominio y del almacenamiento del sitio: borrar sus datos, usar navegación privada o que el navegador libere almacenamiento puede eliminarlo. Mantén una copia JSON de los diseños importantes. La impresión utiliza el sistema y la impresora configurados en el dispositivo.
+
+`npm run build` genera `dist/sw.js` a partir de `sw.template.js`, con una revisión calculada del contenido de todos los assets: no hace falta cambiar una versión manual al editar la app. El navegador instala cada revisión y conserva el trabajo durante los cambios. Las pruebas de Chromium en CI comprueban recarga/reapertura offline, edición, CSV, exportación/impresión, actualizaciones completas y fallidas, fallo de almacenamiento, reinicio del navegador y publicación en subdirectorios.

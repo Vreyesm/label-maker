@@ -5,7 +5,9 @@
   "description": "Editor web de etiquetas compatible con Cloudflare Pages",
   "scripts": {
     "test": "node verify.cjs",
-    "build": "node --check dist/app.js && node --check dist/mobile.js && node verify.cjs"
+    "build": "node --check dist/app.js && node --check dist/mobile.js && node --check dist/offline.js && node --check sw.template.js && node verify.cjs && node build-offline.cjs"
   },
-  "engines": { "node": ">=22" }
+  "engines": {
+    "node": ">=22"
+  }
 }
