@@ -14,10 +14,17 @@ self.addEventListener('install', event => {
         const validType = url.endsWith('.html') ? type.includes('text/html') :
           url.endsWith('.css') ? type.includes('text/css') : /javascript/.test(type);
         if (!response.ok || !validType) throw Error('Incomplete offline assets: ' + url);
-        // Drain each response so the remaining requests can reuse HTTP connections.
-        const buffered = response.clone();
-        await response.arrayBuffer();
-        return buffered;
+        if (new URL(response.url).origin !== new URL(root).origin || !response.url.startsWith(root)) {
+          throw Error('Offline asset redirected outside the app: ' + url);
+        }
+        // Cloudflare redirects index.html to /. Navigation requests cannot reuse a
+        // redirected response, so store a new response with decoded body metadata.
+        const body = await response.arrayBuffer();
+        const headers = new Headers(response.headers);
+        headers.delete('content-encoding');
+        headers.delete('content-length');
+        headers.delete('transfer-encoding');
+        return new Response(body, { status: response.status, statusText: response.statusText, headers });
       }));
       await Promise.all(urls.map((url, i) => cache.put(url, responses[i])));
     } catch (error) {

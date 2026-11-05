@@ -8,6 +8,11 @@ const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'labela-offline-'));
 let version = 1;
 const server = http.createServer((request, response) => {
   const pathname = new URL(request.url, 'http://localhost').pathname;
+  // Match Cloudflare Pages clean-URL redirects, including subdirectory hosting.
+  if (pathname.endsWith('/index.html')) {
+    response.writeHead(308, { Location: pathname.slice(0, -10) });
+    response.end(); return;
+  }
   let file = pathname.replace(/^\/labels\//, '/').slice(1) || 'index.html';
   if (!['index.html', 'style.css', 'app.js', 'mobile.js', 'offline.js', 'sw.js'].includes(file)) {
     response.writeHead(404); response.end(); return;
@@ -35,6 +40,15 @@ async function ready(page) {
     context = await chromium.launchPersistentContext(directory, { headless: true, viewport: { width: 1366, height: 768 } });
     let page = await context.newPage();
     await page.goto(origin + '/'); await ready(page);
+    assert(await page.evaluate(async () => {
+      for (const name of await caches.keys()) {
+        const cache = await caches.open(name);
+        for (const request of await cache.keys()) {
+          if (request.url.endsWith('/index.html') && (await cache.match(request)).redirected) return false;
+        }
+      }
+      return true;
+    }), 'Offline navigation must use a response without redirected metadata');
     await page.evaluate(() => {
       state = { name: 'Diseño offline', w: 100, h: 60, bg: '#ffffff', elements: [el('text', 5, 5, 80, 20, 'Texto offline', { border: true })] };
       selected = state.elements[0].id; render(); persist();
