@@ -1,0 +1,12 @@
+const fs = require('node:fs');
+const crypto = require('node:crypto');
+const path = require('node:path');
+const root = __dirname;
+const files = ['index.html', 'style.css', 'app.js', 'mobile.js', 'offline.js'];
+const template = fs.readFileSync(path.join(root, 'sw.template.js'), 'utf8');
+const hash = crypto.createHash('sha256').update(template);
+for (const file of files) hash.update(file).update(fs.readFileSync(path.join(root, 'dist', file)));
+const revision = hash.digest('hex').slice(0, 24);
+const source = template.replace('__REVISION__', revision).replace('__SHELL_FILES__', JSON.stringify(files));
+fs.writeFileSync(path.join(root, 'dist', 'sw.js'), source);
+console.log('Offline assets prepared:', revision);

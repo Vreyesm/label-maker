@@ -110,3 +110,16 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 @media screen and (max-width:1050px){
  .tabs{scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
 }
+
+.document-status{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;white-space:nowrap;overflow:hidden;line-height:14px}
+.document-status #saved{overflow:hidden;text-overflow:ellipsis;min-width:0}
+#offline-status{flex:0 0 auto;font-size:9px;color:#60776a}
+#offline-status[data-ready=true]{color:#27684c}
+#offline-update{flex:0 0 auto;min-height:18px;padding:0 5px;font-size:9px;line-height:16px}
+#offline-update[hidden]{display:none}
+@media screen and (max-width:1050px) and (max-height:500px){.document-status{display:none}}
+
+/* Offline state uses only an icon; its description remains accessible. */
+#offline-status{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px}
+#offline-status>svg{display:block;flex-shrink:0}
+#offline-status[data-state=unavailable]{color:#9c6022}
