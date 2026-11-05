@@ -101,3 +101,12 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
  .brand{font-size:18px}.brand-icon{display:none}
  .canvas-caption,.workspace-bottom{display:none}
 }
+
+/* Scroll the tool rows without spending another line on scrollbars. */
+@media screen{
+ .workspace-toolbar,.text-toolbar{scrollbar-width:none}
+ .workspace-toolbar::-webkit-scrollbar,.text-toolbar::-webkit-scrollbar{display:none}
+}
+@media screen and (max-width:1050px){
+ .tabs{scrollbar-width:none}.tabs::-webkit-scrollbar{display:none}
+}

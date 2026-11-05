@@ -40,6 +40,10 @@ const { resolve } = require('node:path');
       for (const selector of ['#text-bold', '#toolbar-fit-box', '#text-turn-right']) {
         const control = page.locator(selector);
         await control.click();
+        const bounds = await page.locator(selector).boundingBox();
+        const toolbar = await page.locator('#text-toolbar').boundingBox();
+        assert(bounds.y >= toolbar.y && bounds.y + bounds.height <= toolbar.y + toolbar.height,
+          'Toolbar buttons must remain fully visible inside the compact row');
       }
       assert.equal(await page.evaluate(() => state.elements[0].rotation), 90);
       if (scenario.touch) {
