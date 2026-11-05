@@ -2,18 +2,29 @@
   const status = document.querySelector('#offline-status');
   const button = document.querySelector('#offline-update');
   let registration, ready = false, reloading = false, applying = false;
+  const icons = {
+    ready: '<path d="M6 18H5a4 4 0 0 1-.9-7.9A6 6 0 0 1 15.8 8H17a5 5 0 0 1 1 9.9H6Z"/><path d="m9 13 2 2 4-4"/>',
+    pending: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+    unavailable: '<circle cx="12" cy="12" r="9"/><path d="M12 7v6m0 3h.01"/>'
+  };
+  function paintStatus(kind, label, description) {
+    status.dataset.state = kind;
+    status.title = label + '. ' + description;
+    status.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + icons[kind] + '</svg><span class="sr-only">' + label + '</span>';
+  }
   function show() {
-    status.textContent = ready ? (navigator.onLine ? 'Offline listo' : 'Sin conexión · listo') :
+    const label = ready ? (navigator.onLine ? 'Offline listo' : 'Sin conexión · listo') :
       (navigator.onLine ? 'Preparando offline…' : 'Offline no preparado');
     status.dataset.ready = String(ready);
-    status.title = ready ? 'La app está guardada en este navegador para usarla sin Internet.' :
-      'Abre la app con Internet para descargar todos sus archivos.';
+    paintStatus(ready ? 'ready' : 'pending', label, ready ?
+      'La app está guardada en este navegador para usarla sin Internet.' :
+      'Abre la app con Internet para descargar todos sus archivos.');
     button.hidden = !registration?.waiting;
   }
   function unavailable() {
     ready = false; show();
-    status.textContent = 'Offline no disponible';
-    status.title = 'No se pudieron guardar los archivos de la app. Reintenta con Internet; la edición sigue funcionando.';
+    paintStatus('unavailable', 'Offline no disponible',
+      'No se pudieron guardar los archivos de la app. Reintenta con Internet; la edición sigue funcionando.');
   }
   async function check() {
     const active = registration?.active;

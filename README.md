@@ -166,7 +166,7 @@ El borde se conserva al guardar, duplicar, importar/exportar y deshacer cambios;
 
 ## Uso sin Internet
 
-Abre la app una vez con Internet y espera **Offline listo** junto al nombre del diseño. Después puedes perder la conexión, recargar o cerrar y volver a abrir la misma URL en ese navegador: se conservan la app, sus plantillas, editor, códigos de barras y salida SVG/impresión. El CSV y las imágenes importadas se procesan localmente y los diseños permanecen en el almacenamiento local existente.
+Abre la app una vez con Internet y espera a que el icono de estado offline muestre una nube con un visto junto al nombre del diseño. Al pasar el cursor aparece **Offline listo**; la descripción también está disponible para lectores de pantalla. Después puedes perder la conexión, recargar o cerrar y volver a abrir la misma URL en ese navegador: se conservan la app, sus plantillas, editor, códigos de barras y salida SVG/impresión. El CSV y las imágenes importadas se procesan localmente y los diseños permanecen en el almacenamiento local existente.
 
 Los archivos de la app se descargan como un conjunto completo. Cuando hay una versión nueva aparece **Actualizar**; ese botón guarda primero el trabajo pendiente y recarga. Si no se puede guardar el diseño, se pide descargar una copia antes de actualizar. Las actualizaciones incompletas mantienen la versión offline anterior.
 

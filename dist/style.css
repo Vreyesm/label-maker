@@ -118,3 +118,8 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 #offline-update{flex:0 0 auto;min-height:18px;padding:0 5px;font-size:9px;line-height:16px}
 #offline-update[hidden]{display:none}
 @media screen and (max-width:1050px) and (max-height:500px){.document-status{display:none}}
+
+/* Offline state uses only an icon; its description remains accessible. */
+#offline-status{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px}
+#offline-status>svg{display:block;flex-shrink:0}
+#offline-status[data-state=unavailable]{color:#9c6022}
