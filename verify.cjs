@@ -22,6 +22,15 @@ assert(run(`textSVG(el('text',0,0,40,20,'',{align:'center'}),'Hola').includes('t
 assert(run(`textSVG(el('text',0,0,40,20,'',{align:'right'}),'Hola').includes('x="40"')`));
 assert(run(`textSVG(el('text',0,0,14,30,'',{align:'justify'}),'uno dos tres cuatro').includes('<text x="')`));
 assert.deepEqual(JSON.parse(run(`JSON.stringify(centeredPosition({w:20,h:10},100,60))`)),{x:40,y:25});
+// Smart guides snap visual bounds using a zoom-independent five-pixel threshold.
+assert(run(`(()=>{const e={id:1,w:20,h:10},p=alignedPosition(e,39.2,24.3,{w:100,h:60,elements:[]},4);return p.x===40&&p.y===25&&p.guides.some(g=>g.axis==='x'&&g.value===50)&&p.guides.some(g=>g.axis==='y'&&g.value===30)})()`));
+assert(run(`(()=>{const e={id:1,w:10,h:8},other={id:2,x:20,y:40,w:20,h:10},p=alignedPosition(e,20.8,15,{w:100,h:100,elements:[other]},4);return p.x===20&&p.y===15&&p.guides.some(g=>g.axis==='x'&&g.value===20&&g.from===15&&g.to===50)})()`));
+assert(run(`(()=>{const e={id:1,x:13,y:17,w:10,h:8},p=alignedPosition(e,13.8,17.8,{w:100,h:100,elements:[e]},4);return p.x===14&&p.y===18&&p.guides.length===0})()`));
+assert(run(`(()=>{const e={id:1,w:20,h:10},doc={w:100,h:60,elements:[]};return alignedPosition(e,38,13,doc,2).x===40&&alignedPosition(e,38,13,doc,4).x===38})()`));
+assert(run(`(()=>{const e={id:1,w:20,h:10},p=alignedPosition(e,39.2,24.3,{w:100,h:60,elements:[]},4,true);return p.x===39.2&&p.y===24.3&&!p.guides.length})()`));
+assert(run(`(()=>{const e={id:1,w:20,h:10,rotation:90},p=alignedPosition(e,-4.2,13,{w:100,h:60,elements:[]},4);return Math.abs(p.x+5)<1e-8&&p.guides.some(g=>g.axis==='x'&&g.value===0)})()`));
+assert(run(`(()=>{const e={id:1,w:10,h:8},other={id:2,x:20,y:40,w:20,h:10,rotation:90},p=alignedPosition(e,25.8,15,{w:100,h:100,elements:[other]},4);return Math.abs(p.x-25)<1e-8})()`));
+assert(run(`(()=>{const e={id:1,w:10,h:8},a={id:2,x:20,y:40,w:20,h:10},b={id:3,x:21,y:60,w:20,h:10};return alignedPosition(e,20.8,15,{w:100,h:100,elements:[a,b]},4).x===21})()`));
 assert.deepEqual(JSON.parse(run(`JSON.stringify(resizedBounds({x:5,y:7,w:20,h:10},10,5))`)),{w:30,h:15,x:5,y:7});
 assert(run(`resizedBounds({x:5,y:7,w:20,h:10},-100,-100).w===1`));
 assert(run(`resizedBounds({x:5,y:7,w:20,h:10},-100,-100).h===.5`));

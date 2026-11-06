@@ -332,6 +332,39 @@ function rotatedElementBounds(e){
  const radians=(e.rotation||0)*Math.PI/180,c=Math.abs(Math.cos(radians)),s=Math.abs(Math.sin(radians)),w=e.w*c+e.h*s,h=e.w*s+e.h*c,cx=e.x+e.w/2,cy=e.y+e.h/2;
  return {left:cx-w/2,top:cy-h/2,right:cx+w/2,bottom:cy+h/2};
 }
+// Compare visual edges and centers in millimeters, with a constant screen tolerance.
+function alignedPosition(e,x,y,doc,k,disabled=false){
+ const position={x:Math.round(x*2)/2,y:Math.round(y*2)/2,guides:[]};
+ if(disabled)return {x,y,guides:[]};
+ const moving=rotatedElementBounds({...e,x,y});
+ const targets=[{left:0,top:0,right:doc.w,bottom:doc.h},...doc.elements.filter(other=>other.id!==e.id).map(rotatedElementBounds)];
+ const axes=[{axis:'x',low:'left',high:'right',crossLow:'top',crossHigh:'bottom'},{axis:'y',low:'top',high:'bottom',crossLow:'left',crossHigh:'right'}];
+ const anchors=(b,low,high)=>[(b[low]+b[high])/2,b[low],b[high]];
+ for(const {axis,low,high} of axes){
+  let best=null;
+  for(const target of targets)for(const value of anchors(target,low,high))for(const source of anchors(moving,low,high)){
+   const delta=value-source;
+   if(Math.abs(delta)<=5/k&&(!best||Math.abs(delta)<Math.abs(best.delta)-1e-9))best={delta};
+  }
+  if(best)position[axis]=Math.round(((axis==='x'?x:y)+best.delta)*1e10)/1e10;
+ }
+ const finalBounds=rotatedElementBounds({...e,...position});
+ for(const {axis,low,high,crossLow,crossHigh} of axes){
+  for(const target of targets)for(const value of anchors(target,low,high)){
+   if(!anchors(finalBounds,low,high).some(source=>Math.abs(value-source)<1e-7))continue;
+   const from=Math.min(finalBounds[crossLow],target[crossLow]),to=Math.max(finalBounds[crossHigh],target[crossHigh]);
+   const existing=position.guides.find(guide=>guide.axis===axis&&Math.abs(guide.value-value)<1e-7);
+   if(existing){existing.from=Math.min(existing.from,from);existing.to=Math.max(existing.to,to)}
+   else position.guides.push({axis,value,from,to});
+  }
+ }
+ return position;
+}
+function clearAlignmentGuides(){document.querySelectorAll('.alignment-guide').forEach(guide=>guide.remove())}
+function showAlignmentGuides(guides,k){
+ clearAlignmentGuides();
+ $('#board').insertAdjacentHTML('beforeend',guides.map(({axis,value,from,to})=>`<span aria-hidden="true" class="alignment-guide ${axis}" style="${axis==='x'?`left:${value*k}px;top:${from*k-8}px;height:${(to-from)*k+16}px`:`top:${value*k}px;left:${from*k-8}px;width:${(to-from)*k+16}px`}"></span>`).join(''));
+}
 function editingBounds(doc){
  let left=0,top=0,right=doc.w,bottom=doc.h;
  for(const e of doc.elements){const b=rotatedElementBounds(e);left=Math.min(left,b.left);top=Math.min(top,b.top);right=Math.max(right,b.right);bottom=Math.max(bottom,b.bottom)}
@@ -577,12 +610,12 @@ $('#board').onpointerdown=event=>{
   if(!moved&&Math.hypot(ev.clientX-start.px,ev.clientY-start.py)<3)return;
   if(!moved){checkpoint();moved=true}
   if(resizing)Object.assign(e,resizedBounds(start,dx,dy,e.rotation||0));
-  else{e.x=Math.round((start.x+dx)*2)/2;e.y=Math.round((start.y+dy)*2)/2}
+  else{const aligned=alignedPosition(e,start.x+dx,start.y+dy,state,k,ev.altKey);e.x=aligned.x;e.y=aligned.y;showAlignmentGuides(aligned.guides,k)}
   node.style.left=e.x*k+'px';node.style.top=e.y*k+'px';node.style.width=e.w*k+'px';node.style.height=e.h*k+'px';
   if(resizing){node.innerHTML=elementContent(e);showTransformFeedback(ev,dimensionsText(e))}
  };
- const finish=()=>{hideTransformFeedback();node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;if(moved){render();persist()}else renderProperties()};
- node.onpointerup=finish;node.onpointercancel=finish;
+ const finish=()=>{clearAlignmentGuides();hideTransformFeedback();node.onpointermove=null;node.onpointerup=null;node.onpointercancel=null;node.onlostpointercapture=null;if(moved){render();persist()}else renderProperties()};
+ node.onpointerup=finish;node.onpointercancel=finish;node.onlostpointercapture=finish;
 };
 $('#board').onkeydown=event=>{const handle=event.target.closest('.rotate-handle');if(handle&&['Enter',' ','ArrowLeft','ArrowRight','Home'].includes(event.key)){event.preventDefault();event.stopPropagation();const id=+handle.closest('.element').dataset.id,e=state.elements.find(item=>item.id===id);change(()=>e.rotation=event.key==='Home'?0:normalizedAngle((e.rotation||0)+(event.key==='ArrowLeft'?-15:event.key==='ArrowRight'?15:90)));$(`[data-id="${id}"] .rotate-handle`)?.focus();return}const control=event.target.closest('[data-table-action]');if(control&&['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();const node=control.closest('.element'),e=state.elements.find(e=>e.id===+node.dataset.id);executeTableControl(control,e,null,node)}};
 document.querySelectorAll('[data-orientation]').forEach(button=>button.onclick=()=>{

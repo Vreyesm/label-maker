@@ -115,6 +115,8 @@ La barra tiene botones para girar 90° a izquierda o derecha y un indicador del 
 
 ## Elementos fuera de la etiqueta
 
+Al arrastrar un elemento aparecen guías magenta para alinear sus bordes y centros con la etiqueta o con otros elementos. El elemento encaja automáticamente a menos de 5 píxeles de una alineación, también si está girado. Mantén **Alt** para mover libremente sin ajuste. Las guías desaparecen al soltar y no se guardan ni se imprimen.
+
 El área de edición muestra el contenido, la selección y los tiradores que sobresalen del sticker. El espacio de trabajo incluye los límites de los elementos girados, con margen para recuperar sus controles. Se pueden mover libremente, incluso con coordenadas negativas, para corregir su posición. **Ajustar a pantalla** incluye esos elementos en el encaje. El borde blanco sigue indicando el área imprimible: SVG e impresión recortan al tamaño físico de la etiqueta.
 
 ## Diseños guardados y sesión

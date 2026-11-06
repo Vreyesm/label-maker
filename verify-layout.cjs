@@ -6,6 +6,43 @@ const { resolve } = require('node:path');
 (async () => {
   const browser = await chromium.launch();
   try {
+    // Exercise actual pointer capture, guide overlays, cleanup and undo.
+    const guidePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+    await guidePage.goto(pathToFileURL(resolve('dist/index.html')).href);
+    await guidePage.evaluate(() => {
+      state = { name: 'Guías', w: 100, h: 60, bg: '#ffffff', elements: [el('rect', 10, 10, 20, 10)] };
+      selected = null; history = []; future = []; fitScreen = false; fitWidth = false; zoom = 1; render();
+    });
+    await guidePage.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const geometry = await guidePage.evaluate(() => {
+      const board = $('#board').getBoundingClientRect();
+      return { x: board.left, y: board.top, k: scale() };
+    });
+    const point = (x, y) => [geometry.x + x * geometry.k, geometry.y + y * geometry.k];
+    await guidePage.mouse.move(...point(20, 15));
+    await guidePage.mouse.down();
+    await guidePage.mouse.move(...point(49.3, 29.3));
+    assert.deepEqual(await guidePage.evaluate(() => [state.elements[0].x, state.elements[0].y]), [40, 25]);
+    assert(await guidePage.locator('.alignment-guide').count() >= 2);
+    assert.equal(await guidePage.locator('.alignment-guide').first().evaluate(node => getComputedStyle(node).pointerEvents), 'none');
+    assert.equal(await guidePage.evaluate(() => svgDoc().includes('alignment-guide')), false);
+    await guidePage.keyboard.down('Alt');
+    await guidePage.mouse.move(...point(49.2, 29.2));
+    assert.equal(await guidePage.locator('.alignment-guide').count(), 0);
+    assert(await guidePage.evaluate(() => Math.abs(state.elements[0].x - 39.2) < .1));
+    await guidePage.keyboard.up('Alt');
+    await guidePage.mouse.move(...point(49.3, 29.3));
+    await guidePage.mouse.up();
+    assert.equal(await guidePage.locator('.alignment-guide').count(), 0);
+    await guidePage.evaluate(() => stepHistory('undo'));
+    assert.deepEqual(await guidePage.evaluate(() => [state.elements[0].x, state.elements[0].y]), [10, 10]);
+    await guidePage.mouse.move(...point(20, 15));
+    await guidePage.mouse.down();
+    await guidePage.mouse.move(...point(49.3, 29.3));
+    await guidePage.locator('.element').dispatchEvent('pointercancel');
+    assert.equal(await guidePage.locator('.alignment-guide').count(), 0);
+    await guidePage.mouse.up();
+    await guidePage.close();
     for (const scenario of [
       { width: 1366, height: 600, touch: false, fraction: .55 },
       { width: 1280, height: 720, touch: false, fraction: .55 },
