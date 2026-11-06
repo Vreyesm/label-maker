@@ -123,3 +123,6 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 #offline-status{display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px}
 #offline-status>svg{display:block;flex-shrink:0}
 #offline-status[data-state=unavailable]{color:#9c6022}
+.alignment-guide{position:absolute;pointer-events:none;z-index:100;box-shadow:0 0 1px #fff}
+.alignment-guide.x{width:0;border-left:1px dashed #d12d91}
+.alignment-guide.y{height:0;border-top:1px dashed #d12d91}
