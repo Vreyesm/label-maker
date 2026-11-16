@@ -87,6 +87,53 @@ const { resolve } = require('node:path');
         const box = await page.locator('#text-turn-right').boundingBox();
         assert(box.height >= 40, 'Touch controls must remain large enough');
       }
+      // Header +/- must delete the intended track with real mouse/touch events.
+      await page.evaluate(() => {
+        state = { name: 'Tabla', w: 100, h: 60, bg: '#ffffff', elements: [
+          el('table', 10, 8, 72, 36, '', { rows: 3, cols: 3, header: false,
+            cells: [['A1','B1','C1'], ['A2','B2','C2'], ['A3','B3','C3']],
+            colSizes: [1,2,1], rowSizes: [1,2,1], rotation: 0 })
+        ] };
+        setCellFormat(state.elements[0], { row: 2, col: 2 }, 'color', '#ff0000');
+        selected = state.elements[0].id; activeCell = null; history = []; future = [];
+        fitWidth = true; fitScreen = false; zoom = 1; render(); persist();
+      });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      const original = await page.evaluate(() => JSON.stringify(state));
+      const activate = async selector => {
+        if (scenario.touch) await page.locator(selector).tap();
+        else await page.locator(selector).click();
+      };
+      await activate('[data-table-action="delete-col"][data-index="1"]');
+      assert.deepEqual(await page.evaluate(() => state.elements[0].cells[0]), ['A1','C1']);
+      assert.equal(await page.evaluate(() => state.elements[0].w), 36);
+      assert.equal(await page.evaluate(() => state.elements[0].cellFormats[2][1].color), '#ff0000');
+      await page.evaluate(() => stepHistory('undo'));
+      assert.equal(await page.evaluate(() => JSON.stringify(state)), original);
+      await page.evaluate(() => stepHistory('redo'));
+      assert.equal(await page.evaluate(() => state.elements[0].cols), 2);
+      await page.evaluate(() => { stepHistory('undo'); selected = state.elements[0].id; render(); });
+      await activate('[data-table-action="delete-row"][data-index="1"]');
+      assert.deepEqual(await page.evaluate(() => state.elements[0].cells.map(row => row[0])), ['A1','A3']);
+      assert.equal(await page.evaluate(() => state.elements[0].h), 18);
+      assert.equal(await page.evaluate(() => state.elements[0].cellFormats[1][2].color), '#ff0000');
+      await page.reload();
+      assert.equal(await page.evaluate(() => state.elements[0].rows), 2);
+      await page.evaluate(() => { selected = state.elements[0].id; state.elements[0].rotation = 90; render(); });
+      await activate('[data-table-action="delete-col"][data-index="2"]');
+      assert.equal(await page.evaluate(() => state.elements[0].cols), 2);
+      assert.deepEqual(await page.evaluate(() => state.elements[0].cells[0]), ['A1','B1']);
+      await page.evaluate(() => { resizeTable(state.elements[0],1,1); render(); });
+      assert(await page.locator('[data-table-action="delete-col"]').isDisabled());
+      assert(await page.locator('[data-table-action="delete-row"]').isDisabled());
+      await activate('[data-table-action="insert-col"]');
+      assert.equal(await page.evaluate(() => state.elements[0].cols), 2);
+      if (!scenario.touch) {
+        await page.locator('[data-table-action="delete-col"][data-index="1"]').focus();
+        await page.keyboard.press('Enter');
+        assert.equal(await page.evaluate(() => state.elements[0].cols), 1);
+      }
+      assert(await page.evaluate(() => !buildPrintJob(state,[{}],1).html.includes('table-track-actions')));
       assert.deepEqual(errors, []);
       console.log('PASS compact layout', scenario.width, scenario.height, 'canvas height:', sizes.height);
       await context.close();

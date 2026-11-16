@@ -175,3 +175,7 @@ Los archivos de la app se descargan como un conjunto completo. Cuando hay una ve
 La primera descarga necesita Internet y HTTPS (localhost también sirve). El modo offline depende del mismo navegador y dominio y del almacenamiento del sitio: borrar sus datos, usar navegación privada o que el navegador libere almacenamiento puede eliminarlo. Mantén una copia JSON de los diseños importantes. La impresión utiliza el sistema y la impresora configurados en el dispositivo.
 
 `npm run build` genera `dist/sw.js` a partir de `sw.template.js`, con una revisión calculada del contenido de todos los assets: no hace falta cambiar una versión manual al editar la app. El navegador instala cada revisión y conserva el trabajo durante los cambios. Las pruebas de Chromium en CI comprueban recarga/reapertura offline, edición, CSV, exportación/impresión, actualizaciones completas y fallidas, fallo de almacenamiento, reinicio del navegador y publicación en subdirectorios.
+
+## Eliminar filas o columnas desde el lienzo
+
+Al seleccionar una tabla, cada cabecera tiene **−** para eliminar esa fila o columna y **+** para insertar una nueva. El borrado conserva las demás celdas, formatos y medidas, admite **Deshacer/Rehacer** y desactiva **−** al quedar una sola fila o columna. Los controles son guías de edición y no se imprimen. En filas, los botones están al lado del número y separados del tirador de alto.

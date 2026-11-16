@@ -126,3 +126,14 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 .alignment-guide{position:absolute;pointer-events:none;z-index:100;box-shadow:0 0 1px #fff}
 .alignment-guide.x{width:0;border-left:1px dashed #d12d91}
 .alignment-guide.y{height:0;border-top:1px dashed #d12d91}
+
+/* Quick +/- controls share the header; resize grips keep their own hit area. */
+.table-track-actions{display:flex;align-items:center;flex:0 0 auto;align-self:stretch}
+.table-track-actions button[data-table-action]{flex:0 0 16px;width:16px;height:100%;padding:0;min-width:0;min-height:0;font-size:15px;line-height:1}
+.table-column-head .table-track-actions{padding-right:6px}
+.table-row-head{left:-58px;width:56px;flex-direction:row;align-items:stretch}
+.table-row-head .table-track-actions{margin-right:6px}
+.table-row-head .track-size-grip.row{left:auto;right:0;width:6px}
+.table-track-actions button[data-table-action^="delete"]{color:#a13e36}
+.table-track-actions button[data-table-action^="delete"]:not(:disabled):hover{background:#fbece8}
+.table-track-actions button:focus-visible{outline:2px solid #357bab;outline-offset:-2px}
