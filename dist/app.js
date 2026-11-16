@@ -375,8 +375,8 @@ function editingBounds(doc){
  return {left,top,right,bottom,w:right-left,h:bottom-top};
 }
 function canvasStage(doc,k){
- const bounds=editingBounds(doc),sidePadding=doc.elements.some(e=>e.type==='table')?60:40,padding=40;
- return {width:bounds.w*k+2*sidePadding,height:bounds.h*k+2*padding,left:-bounds.left*k+sidePadding,top:-bounds.top*k+padding};
+ const bounds=editingBounds(doc),padding=doc.elements.some(e=>e.type==='table')?64:40;
+ return {width:bounds.w*k+2*padding,height:bounds.h*k+2*padding,left:-bounds.left*k+padding,top:-bounds.top*k+padding};
 }
 function updateCanvasStage(k){
  const stage=canvasStage(state,k),wrap=$('#canvas-stage'),board=$('#board'),ruler=$('#top-ruler'),dimension=$('#dimension');
@@ -385,10 +385,12 @@ function updateCanvasStage(k){
  dimension.style.left=stage.left+'px';dimension.style.width=state.w*k+'px';dimension.style.top=(stage.height+8)+'px';dimension.style.bottom='auto';
 }
 function viewBounds(){
- const area=$('#canvas-area'),style=typeof getComputedStyle==='function'?getComputedStyle(area):null;
- const padding=(key,fallback)=>style?parseFloat(style[key])||0:fallback;
- const controls=80,sideControls=state.elements.some(e=>e.type==='table')?120:controls;const width=area.clientWidth-padding('paddingLeft',35)-padding('paddingRight',35)-sideControls;
- const height=(area.clientHeight??520)-padding('paddingTop',28)-padding('paddingBottom',24)-($('#canvas-caption')?.offsetHeight??12)-($('#canvas-hint')?.offsetHeight??24)-92-(controls-20);
+ const area=$('#canvas-area'),computed=node=>node&&typeof getComputedStyle==='function'?getComputedStyle(node):null,style=computed(area);
+ const number=(css,key,fallback=0)=>css?parseFloat(css[key])||0:fallback;
+ const space=(selector,height,margin)=>{const node=$(selector),css=computed(node);return css?.display==='none'?0:(node?.offsetHeight??height)+number(css,'marginTop')+number(css,'marginBottom',margin)};
+ const controls=state.elements.some(e=>e.type==='table')?128:80,stageStyle=computed($('#canvas-stage'));
+ const width=area.clientWidth-number(style,'paddingLeft',35)-number(style,'paddingRight',35)-controls;
+ const height=(area.clientHeight??520)-number(style,'paddingTop',28)-number(style,'paddingBottom',24)-space('#canvas-caption',12,24)-space('#canvas-hint',24,0)-number(stageStyle,'marginTop')-number(stageStyle,'marginBottom',38)-controls;
  return {width:Math.max(1,width),height:Math.max(1,height)};
 }
 function fittedScale(doc,bounds,mode='screen'){const width=bounds.width/doc.w;return Math.max(.001,mode==='width'?width:Math.min(width,bounds.height/doc.h))}

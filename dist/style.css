@@ -137,3 +137,10 @@ main{height:calc(100dvh - 180px);min-height:0}.left,.right{min-height:0;overflow
 .table-track-actions button[data-table-action^="delete"]{color:#a13e36}
 .table-track-actions button[data-table-action^="delete"]:not(:disabled):hover{background:#fbece8}
 .table-track-actions button:focus-visible{outline:2px solid #357bab;outline-offset:-2px}
+
+/* Narrow columns stack the actions above their own header, without covering neighbors. */
+.table-column-head{container-type:inline-size}
+@container (max-width:44px){
+ .table-column-head .table-track-actions{position:absolute;left:0;right:6px;top:-34px;height:32px;padding:0;flex-direction:column}
+ .table-column-head .table-track-actions button[data-table-action]{flex:1 1 0;width:100%;height:16px;font-size:12px;overflow:hidden}
+}

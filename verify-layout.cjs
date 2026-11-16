@@ -134,6 +134,33 @@ const { resolve } = require('node:path');
         assert.equal(await page.evaluate(() => state.elements[0].cols), 1);
       }
       assert(await page.evaluate(() => !buildPrintJob(state,[{}],1).html.includes('table-track-actions')));
+      // At mobile fit width, ten columns are narrower than two side-by-side buttons.
+      await page.evaluate(() => {
+        const e=state.elements[0];resizeTable(e,3,10);e.rotation=0;e.x=0;e.y=0;e.w=100;e.h=36;
+        e.colSizes=Array(10).fill(1);e.rowSizes=[1,1,1];e.cells=e.cells.map((row,r)=>row.map((_,c)=>r+':'+c));
+        fitWidth=true;fitScreen=false;zoom=1;selected=e.id;render();
+      });
+      await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+      for(const action of ['delete-col','insert-col']){
+        for(let index=0;index<10;index++){
+          const control=page.locator('[data-table-action="'+action+'"][data-index="'+(action==='insert-col'?index+1:index)+'"]');
+          assert(await control.evaluate(button=>{
+            button.scrollIntoView({block:'nearest',inline:'nearest'});
+            const box=button.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
+            return !button.disabled&&box.width>0&&box.height>0&&(hit===button||button.contains(hit));
+          }), 'Every narrow column action must keep its own click target: '+action+' '+index);
+        }
+      }
+      await activate('[data-table-action="delete-col"][data-index="4"]');
+      assert.deepEqual(await page.evaluate(()=>state.elements[0].cells[0]),['0:0','0:1','0:2','0:3','0:5','0:6','0:7','0:8','0:9']);
+      await page.evaluate(()=>{selected=state.elements[0].id;state.elements[0].rotation=90;render()});
+      assert(await page.locator('.table-row-head').first().evaluate(header=>{
+        const h=header.getBoundingClientRect(),s=document.querySelector('#canvas-stage').getBoundingClientRect();
+        return h.top>=s.top-1&&h.left>=s.left-1&&h.bottom<=s.bottom+1&&h.right<=s.right+1;
+      }), 'Rotated row header must fit inside the editing stage');
+      await activate('[data-table-action="delete-row"][data-index="0"]');
+      assert.equal(await page.evaluate(()=>state.elements[0].cells[0][0]),'1:0');
+
       assert.deepEqual(errors, []);
       console.log('PASS compact layout', scenario.width, scenario.height, 'canvas height:', sizes.height);
       await context.close();
