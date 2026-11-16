@@ -258,9 +258,13 @@ function mutateTableTrack(e,axis,index,operation='insert'){
  e[axis==='col'?'colSizes':'rowSizes']=sizes;const total=sizes.reduce((a,b)=>a+b,0);updateTableExtent(e,baseline,axis==='col'?total:e.w,axis==='row'?total:e.h);
  selectTableRange(e,axis,Math.min(index,(axis==='col'?e.cols:e.rows)-1));
 }
+function tableTrackActions(axis,index,label,count){
+ const name=axis==='col'?'columna':'fila',remove='Eliminar '+name+' '+label,insert=axis==='col'?'Insertar columna a la derecha de '+label:'Insertar fila debajo de '+label;
+ return `<span class="table-track-actions"><button type="button" data-table-action="delete-${axis}" data-index="${index}" title="${count<=1?'La tabla necesita al menos una '+name:remove}" aria-label="${remove}" ${count<=1?'disabled':''}>−</button><button type="button" data-table-action="insert-${axis}" data-index="${index+1}" title="${insert}" aria-label="${insert}" ${count>=10?'disabled':''}>+</button></span>`;
+}
 function tableHeaderControls(e){
  const tracks=tableTracks(e),selection=selectedTableCell(e);let x=0,y=0;
- return tracks.cols.map((w,index)=>{const left=x;x+=w;const letter=String.fromCharCode(65+index);return `<span class="table-column-head ${selection?.scope==='col'&&selection.col===index?'active':''}" style="left:${left/e.w*100}%;width:${w/e.w*100}%"><button type="button" data-table-action="select-col" data-index="${index}" title="Seleccionar columna ${letter}">${letter}</button><button type="button" data-table-action="insert-col" data-index="${index+1}" title="Insertar columna a la derecha de ${letter}" aria-label="Insertar columna a la derecha de ${letter}" ${e.cols>=10?'disabled':''}>+</button><span class="track-size-grip col" data-table-action="resize-col" data-index="${index}" title="Arrastra para cambiar todo el ancho de esta columna"></span></span>`}).join('')+tracks.rows.map((h,index)=>{const top=y;y+=h;return `<span class="table-row-head ${selection?.scope==='row'&&selection.row===index?'active':''}" style="top:${top/e.h*100}%;height:${h/e.h*100}%"><button type="button" data-table-action="select-row" data-index="${index}" title="Seleccionar fila ${index+1}">${index+1}</button><button type="button" data-table-action="insert-row" data-index="${index+1}" title="Insertar fila debajo de ${index+1}" aria-label="Insertar fila debajo de ${index+1}" ${e.rows>=10?'disabled':''}>+</button><span class="track-size-grip row" data-table-action="resize-row" data-index="${index}" title="Arrastra para cambiar todo el alto de esta fila"></span></span>`}).join('');
+ return tracks.cols.map((w,index)=>{const left=x;x+=w;const letter=String.fromCharCode(65+index);return `<span class="table-column-head ${selection?.scope==='col'&&selection.col===index?'active':''}" style="left:${left/e.w*100}%;width:${w/e.w*100}%"><button type="button" data-table-action="select-col" data-index="${index}" title="Seleccionar columna ${letter}">${letter}</button>${tableTrackActions('col',index,letter,e.cols)}<span class="track-size-grip col" data-table-action="resize-col" data-index="${index}" title="Arrastra para cambiar todo el ancho de esta columna"></span></span>`}).join('')+tracks.rows.map((h,index)=>{const top=y;y+=h;return `<span class="table-row-head ${selection?.scope==='row'&&selection.row===index?'active':''}" style="top:${top/e.h*100}%;height:${h/e.h*100}%"><button type="button" data-table-action="select-row" data-index="${index}" title="Seleccionar fila ${index+1}">${index+1}</button>${tableTrackActions('row',index,index+1,e.rows)}<span class="track-size-grip row" data-table-action="resize-row" data-index="${index}" title="Arrastra para cambiar todo el alto de esta fila"></span></span>`}).join('');
 }
 function beginSingleTrackResize(event,node,e,axis,index){
  showTransformFeedback(event,dimensionsText(e));selectTableRange(e,axis,index);const baseline={...e,tracks:tableTracks(e)},original=baseline.tracks[axis==='col'?'cols':'rows'][index],start={x:event.clientX,y:event.clientY},k=scale();let moved=false;
@@ -371,7 +375,7 @@ function editingBounds(doc){
  return {left,top,right,bottom,w:right-left,h:bottom-top};
 }
 function canvasStage(doc,k){
- const bounds=editingBounds(doc),padding=40;
+ const bounds=editingBounds(doc),padding=doc.elements.some(e=>e.type==='table')?64:40;
  return {width:bounds.w*k+2*padding,height:bounds.h*k+2*padding,left:-bounds.left*k+padding,top:-bounds.top*k+padding};
 }
 function updateCanvasStage(k){
@@ -381,10 +385,12 @@ function updateCanvasStage(k){
  dimension.style.left=stage.left+'px';dimension.style.width=state.w*k+'px';dimension.style.top=(stage.height+8)+'px';dimension.style.bottom='auto';
 }
 function viewBounds(){
- const area=$('#canvas-area'),style=typeof getComputedStyle==='function'?getComputedStyle(area):null;
- const padding=(key,fallback)=>style?parseFloat(style[key])||0:fallback;
- const controls=80;const width=area.clientWidth-padding('paddingLeft',35)-padding('paddingRight',35)-controls;
- const height=(area.clientHeight??520)-padding('paddingTop',28)-padding('paddingBottom',24)-($('#canvas-caption')?.offsetHeight??12)-($('#canvas-hint')?.offsetHeight??24)-92-(controls-20);
+ const area=$('#canvas-area'),computed=node=>node&&typeof getComputedStyle==='function'?getComputedStyle(node):null,style=computed(area);
+ const number=(css,key,fallback=0)=>css?parseFloat(css[key])||0:fallback;
+ const space=(selector,height,margin)=>{const node=$(selector),css=computed(node);return css?.display==='none'?0:(node?.offsetHeight??height)+number(css,'marginTop')+number(css,'marginBottom',margin)};
+ const controls=state.elements.some(e=>e.type==='table')?128:80,stageStyle=computed($('#canvas-stage'));
+ const width=area.clientWidth-number(style,'paddingLeft',35)-number(style,'paddingRight',35)-controls;
+ const height=(area.clientHeight??520)-number(style,'paddingTop',28)-number(style,'paddingBottom',24)-space('#canvas-caption',12,24)-space('#canvas-hint',24,0)-number(stageStyle,'marginTop')-number(stageStyle,'marginBottom',38)-controls;
  return {width:Math.max(1,width),height:Math.max(1,height)};
 }
 function fittedScale(doc,bounds,mode='screen'){const width=bounds.width/doc.w;return Math.max(.001,mode==='width'?width:Math.min(width,bounds.height/doc.h))}

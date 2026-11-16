@@ -359,4 +359,10 @@ assert(run(`(()=>{const e=el('text',0,0,.2,.5,'',{border:true,borderWidth:3}),m=
 assert(run(`(()=>{const e=el('text',0,0,40,20,'{{producto}}',{border:true,borderWidth:.4,rotation:90}),fit=fitTextToBox(e,{producto:'BODEGA'}),inner=textLayoutStyle({...e,...fit});return measureText('BODEGA',inner)<=inner.w&&fit.size*1.2<=inner.h&&e.w===40&&e.h===20})()`));
 assert(run(`(()=>{const e=el('text',0,0,40,20,'BODEGA',{border:true,borderColor:'#112233',borderWidth:.4}),doc={...sampleDoc,elements:[e]},svg=svgDoc(doc),job=buildPrintJob(doc,[{}],1),restored=validate(JSON.parse(JSON.stringify(doc)));return job.html.includes(svg)&&restored.elements[0].border&&restored.elements[0].borderWidth===.4&&restored.elements[0].borderColor==='#112233'})()`));
 for(const extra of [{border:'yes'},{borderWidth:0},{borderWidth:4},{borderColor:'red'},{borderColor:123}]){context.badBorder=extra;assert.throws(()=>run(`validate({...sampleDoc,elements:[el('text',0,0,40,20,'A',badBorder)]})`));}
+// Header delete controls target the current track; insert targets the next one.
+assert(run(`tableTrackActions('col',1,'B',3).includes('data-table-action="delete-col" data-index="1"')`));
+assert(run(`tableTrackActions('row',2,3,4).includes('aria-label="Eliminar fila 3"')`));
+assert(run(`tableTrackActions('row',0,1,1).includes('aria-label="Eliminar fila 1" disabled')`));
+assert(run(`(()=>{const e=clone(testTable);state.elements=[e];selected=e.id;history=[];executeTableControl({dataset:{tableAction:'delete-col',index:'0'}},e,null,null);return e.cols===1&&e.cells[0][0]==='Valor'&&history.length===1})()`));
+assert(run(`(()=>{const e=clone(testTable);state.elements=[e];selected=e.id;history=[];executeTableControl({disabled:true,dataset:{tableAction:'delete-row',index:'0'}},e,null,null);return e.rows===2&&history.length===0})()`));
 console.log('Comprobaciones correctas: códigos, CSV, SVG, plantillas, alineación, ajuste de líneas, centrado, resize rotado, ajuste al ancho, edición directa tablas, alineación vertical impresión, filas/columnas y campos automáticos.');
