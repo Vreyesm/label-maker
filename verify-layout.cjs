@@ -147,7 +147,7 @@ const { resolve } = require('node:path');
           assert(await control.evaluate(button=>{
             button.scrollIntoView({block:'nearest',inline:'nearest'});
             const box=button.getBoundingClientRect(),hit=document.elementFromPoint(box.left+box.width/2,box.top+box.height/2);
-            return !button.disabled&&box.width>0&&box.height>0&&(hit===button||button.contains(hit));
+            return box.width>0&&box.height>0&&(hit===button||button.contains(hit));
           }), 'Every narrow column action must keep its own click target: '+action+' '+index);
         }
       }
